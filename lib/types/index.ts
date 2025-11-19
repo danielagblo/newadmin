@@ -239,6 +239,8 @@ export interface CreateUserForm {
   address?: string;
   avatar?: File;
   password: string;
+  is_superuser?: boolean;
+  is_staff?: boolean;
 }
 
 export interface UpdateUserForm {
@@ -249,6 +251,8 @@ export interface UpdateUserForm {
   avatar?: File;
   preferred_notification_email?: string;
   preferred_notification_phone?: string;
+  is_superuser?: boolean;
+  is_staff?: boolean;
 }
 
 export interface CreateProductForm {

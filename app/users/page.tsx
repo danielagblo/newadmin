@@ -25,6 +25,8 @@ export default function UsersPage() {
     name: '',
     address: '',
     password: '',
+    is_superuser: false,
+    is_staff: false,
   });
 
   const fetchUsers = useCallback(async () => {
@@ -51,6 +53,8 @@ export default function UsersPage() {
       name: '',
       address: '',
       password: '',
+      is_superuser: false,
+      is_staff: false,
     });
     setIsModalOpen(true);
   };
@@ -63,6 +67,8 @@ export default function UsersPage() {
       name: user.name,
       address: user.address || '',
       password: '',
+      is_superuser: user.is_superuser,
+      is_staff: user.is_staff,
     });
     setIsModalOpen(true);
   };
@@ -164,6 +170,28 @@ export default function UsersPage() {
       ),
     },
     {
+      key: 'is_superuser',
+      header: 'Superuser',
+      render: (user: User) => (
+        <span className={`px-2 py-1 rounded text-xs ${
+          user.is_superuser ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+        }`}>
+          {user.is_superuser ? 'Yes' : 'No'}
+        </span>
+      ),
+    },
+    {
+      key: 'is_staff',
+      header: 'Staff',
+      render: (user: User) => (
+        <span className={`px-2 py-1 rounded text-xs ${
+          user.is_staff ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+        }`}>
+          {user.is_staff ? 'Yes' : 'No'}
+        </span>
+      ),
+    },
+    {
       key: 'created_at',
       header: 'Created',
       render: (user: User) => format(new Date(user.created_at), 'MMM dd, yyyy'),
@@ -261,6 +289,26 @@ export default function UsersPage() {
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
             )}
+            <div className="space-y-2 pt-2">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={formData.is_staff}
+                  onChange={(e) => setFormData({ ...formData, is_staff: e.target.checked })}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Staff Member</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={formData.is_superuser}
+                  onChange={(e) => setFormData({ ...formData, is_superuser: e.target.checked })}
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Superuser</span>
+              </label>
+            </div>
             <div className="flex justify-end space-x-2 pt-4">
               <Button
                 type="button"
