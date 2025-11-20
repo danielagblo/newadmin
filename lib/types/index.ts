@@ -82,11 +82,10 @@ export interface SubCategory {
 export interface Feature {
   id: number;
   subcategory: number;
-  name: string
+  name: string;
   description?: string;
   possible_values: string[];
   created_at: string;
-;
 }
 
 // Location Types
