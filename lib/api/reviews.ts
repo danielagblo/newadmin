@@ -1,9 +1,9 @@
 import apiClient from './config';
-import { Review } from '../types';
+import { Review, PaginatedResponse } from '../types';
 
 export const reviewsApi = {
-  list: async (params?: { product?: number; user?: number }): Promise<Review[]> => {
-    const response = await apiClient.get<Review[]>('/reviews/', { params });
+  list: async (params?: { product?: number; user?: number; page?: number; search?: string }): Promise<Review[] | PaginatedResponse<Review>> => {
+    const response = await apiClient.get<Review[] | PaginatedResponse<Review>>('/reviews/', { params });
     return response.data;
   },
 
