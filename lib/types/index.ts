@@ -48,18 +48,9 @@ export interface Product {
   description: string;
   price: string;
   duration: string;
-  owner?: User;
-  images?: ProductImage[];
-  product_features?: ProductFeature[];
+  owner: string | User;
   created_at: string;
   updated_at: string;
-}
-
-export interface ProductImage {
-  id: number;
-  product: number;
-  image: string;
-  created_at: string;
 }
 
 export interface ProductFeature {
@@ -82,31 +73,46 @@ export interface Category {
 export interface SubCategory {
   id: number;
   category: number;
-  name: string;
+  name: string
   description?: string;
   features?: Feature[];
   created_at: string;
-  updated_at: string;
+;
 }
 
 export interface Feature {
   id: number;
   subcategory: number;
-  name: string;
-  description: string;
-  possible_values?: string[]; // Predefined possible values for this feature
-  values?: string[]; // Combined unique values (from ProductFeature + possible_values)
+  name: string
+  description?: string;
+  possible_values: string[];
   created_at: string;
-  updated_at: string;
+;
 }
 
 // Location Types
 export interface Location {
   id: number;
-  region: string;
   name: string;
-  description?: string;
-  is_active?: boolean;
+  region?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Coupon Types
+export interface Coupon {
+  id: number;
+  code: string;
+  discount_type: 'PERCENT' | 'FIXED';
+  discount_value: number;
+  min_purchase?: number;
+  max_discount?: number;
+  usage_limit?: number;
+  used_count: number;
+  is_active: boolean;
+  valid_from: string;
+  valid_until: string;
   created_at: string;
   updated_at: string;
 }
@@ -114,221 +120,56 @@ export interface Location {
 // Review Types
 export interface Review {
   id: number;
-  product: Product;
-  user: User;
+  product: number | Product;
+  user: number | User;
   rating: number;
   comment?: string;
-  created_at: string;
-}
-
-// Coupon Types
-export interface Coupon {
-  id: number;
-  code: string;
-  description?: string;
-  discount_type: 'percent' | 'fixed';
-  discount_value: string;
-  max_uses?: number;
-  uses: number;
-  per_user_limit?: number;
-  valid_from?: string;
-  valid_until?: string;
-  is_active: boolean;
-  remaining_uses?: number;
   created_at: string;
   updated_at: string;
 }
 
-export interface CouponRedemption {
+// Alert Types
+export interface Alert {
   id: number;
-  coupon: Coupon;
-  user: number;
+  title: string;
+  body: string;
+  kind: string;
+  user: User | number | undefined;
+  read: boolean;
   created_at: string;
 }
 
 // Chat Types
 export interface ChatRoom {
   id: number;
-  room_id: string;
-  name: string;
-  is_group: boolean;
-  members: User[];
-  messages?: Message[];
-  total_unread?: number;
+  name?: string;
+  type: 'DIRECT' | 'GROUP';
+  members: (User | number)[];
   created_at: string;
+  updated_at: string;
 }
 
 export interface Message {
   id: number;
-  room: number;
-  sender: User;
+  chatroom: number | ChatRoom;
+  sender: number | User;
   content: string;
-  is_read: boolean;
+  read: boolean;
   created_at: string;
 }
-
-// Alert Types
-export interface Alert {
-  id: number;
-  user?: User | number; // Optional, can be User object or user ID (number)
-  title: string;
-  body: string;
-  kind?: string;
-  is_read: boolean;
-  created_at: string;
-}
-
-// FCM Device Types
-export interface FCMDevice {
-  id: number;
-  user: number;
-  token: string;
-  created_at: string;
-}
-
-// Referral Types
-export interface Referral {
-  id: number;
-  inviter: number;
-  invitee: number;
-  code: string;
-  used_referral_code?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// Wallet Types
-export interface Wallet {
-  id: number;
-  user: number;
-  balance: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// API Response Types
-export interface PaginatedResponse<T> {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: T[];
-}
-
-export interface LoginResponse {
-  user: User;
-  token: string;
-}
-
-export interface ApiError {
-  detail?: string;
-  message?: string;
-  error_message?: string;
-  [key: string]: any;
-}
-
-// Form Types
-export interface LoginForm {
-  email: string;
-  password: string;
-}
-
-export interface CreateUserForm {
-  email: string;
-  phone: string;
-  name: string;
-  address?: string;
-  avatar?: File;
-  password: string;
-  is_superuser?: boolean;
-  is_staff?: boolean;
-}
-
-export interface UpdateUserForm {
-  email?: string;
-  phone?: string;
-  name?: string;
-  address?: string;
-  avatar?: File;
-  preferred_notification_email?: string;
-  preferred_notification_phone?: string;
-  is_superuser?: boolean;
-  is_staff?: boolean;
-}
-
-export interface CreateProductForm {
-  name: string;
-  image?: File;
-  category?: number;
-  location?: number;
-  type: 'SALE' | 'PAYLATER' | 'RENT';
-  status?: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
-  description: string;
-  price: string;
-  duration?: string;
-  owner?: number;
-}
-
-export interface CreateCategoryForm {
-  name: string;
-  description?: string;
-}
-
-export interface CreateSubCategoryForm {
-  category: number;
-  name: string;
-  description?: string;
-}
-
-export interface CreateCouponForm {
-  code: string;
-  description?: string;
-  discount_type: 'percent' | 'fixed';
-  discount_value: string;
-  max_uses?: number;
-  per_user_limit?: number;
-  valid_from?: string;
-  valid_until?: string;
-  is_active?: boolean;
-}
-
-export interface CreateLocationForm {
-  region: string;
-  name: string;
-  description?: string;
-  is_active?: boolean;
-}
-
-export const REGIONS: string[] = [
-  'Ahafo',
-  'Ashanti',
-  'Bono East',
-  'Brong Ahafo',
-  'Central',
-  'Eastern',
-  'Greater Accra',
-  'North East',
-  'Northern',
-  'Oti',
-  'Savannah',
-  'Upper East',
-  'Upper West',
-  'Volta',
-  'Western',
-  'Western North',
-];
 
 // Subscription Types
 export interface Subscription {
   id: number;
   name: string;
   tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
-  price: string;
-  original_price?: string; // For showing strikethrough price
-  multiplier?: string; // e.g., "1.5x", "4x", "10x"
-  discount_percentage?: number; // e.g., 50 for 50% off
+  price: number;
+  original_price?: number;
+  discount_percentage?: number;
+  multiplier?: number;
   duration_days: number;
   description?: string;
-  features?: string; // JSON string or comma-separated
+  features: string[];
   max_ads?: number;
   max_products?: number;
   is_active: boolean;
@@ -339,21 +180,97 @@ export interface Subscription {
 export interface CreateSubscriptionForm {
   name: string;
   tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
-  price: string;
-  original_price?: string;
-  multiplier?: string;
+  price: number;
+  original_price?: number;
   discount_percentage?: number;
+  multiplier?: number;
   duration_days: number;
   description?: string;
-  features?: string;
+  features: string[];
   max_ads?: number;
   max_products?: number;
   is_active: boolean;
 }
 
-export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
-export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
-export const USER_LEVELS = ['SILVER', 'GOLD', 'DIAMOND'] as const;
-export const DISCOUNT_TYPES = ['percent', 'fixed'] as const;
-export const SUBSCRIPTION_TIERS = ['BASIC', 'BUSINESS', 'PLATINUM'] as const;
+// Feedback Types
+export interface Feedback {
+  id: number;
+  user: number | User;
+  subject: string;
+  message: string;
+  category: 'BUG' | 'FEATURE' | 'IMPROVEMENT' | 'COMPLAINT' | 'OTHER';
+  status: 'PENDING' | 'IN_REVIEW' | 'RESOLVED' | 'REJECTED';
+  admin_response?: string;
+  admin_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
 
+export interface CreateFeedbackForm {
+  subject: string;
+  message: string;
+  category: 'BUG' | 'FEATURE' | 'IMPROVEMENT' | 'COMPLAINT' | 'OTHER';
+}
+
+export interface UpdateFeedbackForm {
+  status?: 'PENDING' | 'IN_REVIEW' | 'RESOLVED' | 'REJECTED';
+  admin_response?: string;
+  admin_notes?: string;
+}
+
+// Form Types
+export interface CreateUserForm {
+  email: string;
+  phone: string;
+  name: string;
+  password: string;
+  address?: string;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+}
+
+export interface UpdateUserForm {
+  email?: string;
+  phone?: string;
+  name?: string;
+  address?: string;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+}
+
+export interface CreateCategoryForm {
+  name: string;
+  description?: string;
+}
+
+export interface CreateSubCategoryForm {
+  name: string;
+  description?: string;
+  category: number;
+}
+
+export interface CreateCouponForm {
+  code: string;
+  discount_type: 'PERCENT' | 'FIXED';
+  discount_value: number;
+  min_purchase?: number;
+  max_discount?: number;
+  usage_limit?: number;
+  is_active: boolean;
+  valid_from: string;
+  valid_until: string;
+}
+
+// Pagination Types
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+// Constants
+export const USER_LEVELS = ['SILVER', 'GOLD', 'DIAMOND'] as const;
+export const SUBSCRIPTION_TIERS = ['BASIC', 'BUSINESS', 'PLATINUM'] as const;
+export const FEEDBACK_CATEGORIES = ['BUG', 'FEATURE', 'IMPROVEMENT', 'COMPLAINT', 'OTHER'] as const;
+export const FEEDBACK_STATUSES = ['PENDING', 'IN_REVIEW', 'RESOLVED', 'REJECTED'] as const;

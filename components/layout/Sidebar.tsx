@@ -17,6 +17,7 @@ import {
   Smartphone,
   CreditCard,
   Shield,
+  MessageCircle,
 } from 'lucide-react';
 
 interface NavItem {
@@ -36,6 +37,7 @@ const navigation: NavItem[] = [
   { name: 'Subscriptions', href: '/subscriptions', icon: CreditCard },
   { name: 'Reviews', href: '/reviews', icon: MessageSquare },
   { name: 'Chat Rooms', href: '/chatrooms', icon: MessageSquare },
+  { name: 'Feedback', href: '/feedback', icon: MessageCircle },
   { name: 'Alerts', href: '/alerts', icon: Bell },
   { name: 'Devices', href: '/devices', icon: Smartphone },
 ];
