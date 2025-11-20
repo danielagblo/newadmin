@@ -312,7 +312,7 @@ export default function CategoriesPage() {
     setSelectedSubCategoryId(feature.subcategory);
     setFeatureFormData({
       name: feature.name,
-      description: feature.description,
+      description: feature.description || '',
       subcategory: feature.subcategory,
       possible_values: feature.possible_values || [],
     });
