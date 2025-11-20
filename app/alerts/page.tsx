@@ -322,7 +322,7 @@ export default function AlertsPage() {
             <div className="flex items-start">
               <div className="flex-1">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> If the "Send Notification" button doesn&apos;t work, 
+                  <strong>Note:</strong> If the &quot;Send Notification&quot; button doesn&apos;t work, 
                   the REST API endpoint for creating alerts may not exist. 
                   You can create notifications in Django admin and they will appear here.
                 </p>
