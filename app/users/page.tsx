@@ -34,17 +34,29 @@ export default function UsersPage() {
     setLoading(true);
     setError(null);
     try {
+      console.log('Fetching users with search term:', searchTerm || 'none');
       const data = await usersApi.list(searchTerm || undefined);
-      console.log('Users fetched:', data);
+      console.log('Users fetched from API:', data);
+      console.log('Users data type:', typeof data);
+      console.log('Is array?', Array.isArray(data));
+      
       const usersArray = Array.isArray(data) ? data : [];
+      console.log(`Setting ${usersArray.length} users to state`);
+      
+      if (usersArray.length > 0) {
+        console.log('Sample user:', usersArray[0]);
+      }
+      
       setUsers(usersArray);
+      
       if (usersArray.length === 0 && !searchTerm) {
-        console.warn('No users found.');
+        console.warn('No users found. This might be normal if there are no users in the database.');
       }
     } catch (error: any) {
       console.error('Error fetching users:', error);
       console.error('Error response:', error?.response);
       console.error('Error status:', error?.response?.status);
+      console.error('Error data:', error?.response?.data);
       
       let errorMessage = 'Failed to fetch users';
       let errorDetails = '';

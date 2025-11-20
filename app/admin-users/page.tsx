@@ -64,18 +64,43 @@ export default function AdminUsersPage() {
     setLoading(true);
     setError(null);
     try {
+      console.log('Fetching admin users with search term:', searchTerm || 'none');
       const data = await usersApi.list(searchTerm || undefined);
-      console.log('Users fetched:', data);
+      console.log('Users fetched from API:', data);
+      console.log('Users data type:', typeof data);
+      console.log('Is array?', Array.isArray(data));
+      
       const usersArray = Array.isArray(data) ? data : [];
+      console.log(`Total users fetched: ${usersArray.length}`);
+      
+      if (usersArray.length > 0) {
+        console.log('Sample user:', usersArray[0]);
+        console.log('Sample user is_staff:', usersArray[0].is_staff);
+        console.log('Sample user is_superuser:', usersArray[0].is_superuser);
+      }
+      
       setAllUsers(usersArray);
+      
       // Filter to show only admin users (staff or superuser)
-      const admins = usersArray.filter((u: User) => u.is_staff || u.is_superuser);
+      const admins = usersArray.filter((u: User) => {
+        const isAdmin = u.is_staff || u.is_superuser;
+        if (isAdmin) {
+          console.log(`Found admin user: ${u.name} (${u.email}) - staff: ${u.is_staff}, superuser: ${u.is_superuser}`);
+        }
+        return isAdmin;
+      });
+      
       setAdminUsers(admins);
-      console.log(`Found ${admins.length} admin users out of ${usersArray.length} total users`);
+      console.log(`✅ Found ${admins.length} admin users out of ${usersArray.length} total users`);
+      
+      if (admins.length === 0 && usersArray.length > 0) {
+        console.warn('⚠️ No admin users found. All users have is_staff=false and is_superuser=false');
+      }
     } catch (error: any) {
       console.error('Error fetching admin users:', error);
       console.error('Error response:', error?.response);
       console.error('Error status:', error?.response?.status);
+      console.error('Error data:', error?.response?.data);
       
       let errorMessage = 'Failed to fetch admin users';
       let errorDetails = '';
