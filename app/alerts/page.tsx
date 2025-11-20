@@ -473,7 +473,21 @@ export default function AlertsPage() {
                       const now = new Date();
                       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
                       
-                      const verifiedUsers = users.filter(u => u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo);
+                      // Verified users who have submitted ads (active_ads > 0 OR taken_ads > 0)
+                      const verifiedWithAds = users.filter(u => 
+                        u.admin_verified && 
+                        new Date(u.created_at) <= thirtyDaysAgo &&
+                        ((u.active_ads && u.active_ads > 0) || (u.taken_ads && u.taken_ads > 0))
+                      );
+                      
+                      // Verified users who haven't submitted any ads
+                      const verifiedNoAds = users.filter(u => 
+                        u.admin_verified && 
+                        new Date(u.created_at) <= thirtyDaysAgo &&
+                        (!u.active_ads || u.active_ads === 0) &&
+                        (!u.taken_ads || u.taken_ads === 0)
+                      );
+                      
                       const unverifiedUsers = users.filter(u => !u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo);
                       const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo);
                       const inactiveUsers = users.filter(u => !u.is_active);
@@ -511,30 +525,64 @@ export default function AlertsPage() {
                       
                       return (
                         <>
-                          {/* Verified Users */}
-                          {verifiedUsers.length > 0 && (
+                          {/* Verified Users with Ads */}
+                          {verifiedWithAds.length > 0 && (
                             <div className="space-y-2">
                               <div className="flex items-center justify-between border-b border-gray-200 pb-2">
                                 <label className="flex items-center space-x-2">
                                   <input
                                     type="checkbox"
-                                    checked={verifiedUsers.every(u => notificationForm.userIds.includes(u.id))}
-                                    onChange={() => toggleGroup(verifiedUsers.map(u => u.id))}
+                                    checked={verifiedWithAds.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(verifiedWithAds.map(u => u.id))}
                                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                   />
-                                  <span className="text-sm font-semibold text-gray-700">
-                                    Verified Users ({verifiedUsers.length})
+                                  <span className="text-sm font-semibold text-blue-700">
+                                    Verified Users with Ads ({verifiedWithAds.length})
                                   </span>
                                 </label>
                               </div>
                               <div className="pl-6 space-y-1">
-                                {verifiedUsers.map((user) => (
+                                {verifiedWithAds.map((user) => (
                                   <label key={user.id} className="flex items-center space-x-2 py-1">
                                     <input
                                       type="checkbox"
                                       checked={notificationForm.userIds.includes(user.id)}
                                       onChange={() => toggleUser(user.id)}
                                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Verified Users without Ads */}
+                          {verifiedNoAds.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={verifiedNoAds.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(verifiedNoAds.map(u => u.id))}
+                                    className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-semibold text-purple-700">
+                                    Verified Users (No Ads) ({verifiedNoAds.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {verifiedNoAds.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                     />
                                     <span className="text-sm text-gray-700">
                                       {user.name} ({user.email})
