@@ -321,3 +321,33 @@ export interface CreateSubCategoryForm {
 
 // User Level Constants
 export const USER_LEVELS = ['SILVER', 'GOLD', 'DIAMOND'] as const;
+
+// Discount Type Constants
+export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
+
+// Product Type Constants
+export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
+
+// Product Status Constants
+export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
+
+// Region Constants
+export const REGIONS = [
+  'Greater Accra',
+  'Ashanti',
+  'Western',
+  'Eastern',
+  'Central',
+  'Volta',
+  'Northern',
+  'Upper East',
+  'Upper West',
+  'Brong Ahafo',
+  'Western North',
+  'Ahafo',
+  'Bono',
+  'Bono East',
+  'Oti',
+  'Savannah',
+  'North East',
+] as const;

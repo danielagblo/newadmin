@@ -553,16 +553,14 @@ export default function CategoriesPage() {
                                               {feature.description && (
                                                 <p className="text-xs text-gray-600 mt-1">{feature.description}</p>
                                               )}
-                                              {feature.values && feature.values.length > 0 && (
+                                              {feature.possible_values && feature.possible_values.length > 0 && (
                                                 <div className="mt-2">
                                                   <p className="text-xs font-medium text-gray-700 mb-1">
-                                                    Values ({feature.values.length}):
+                                                    Values ({feature.possible_values.length}):
                                                   </p>
                                                   <div className="flex flex-wrap gap-1">
-                                                    {feature.values.map((value, idx) => {
-                                                      const isFromProduct = feature.possible_values 
-                                                        ? !feature.possible_values.includes(value)
-                                                        : true;
+                                                    {feature.possible_values.map((value, idx) => {
+                                                      const isFromProduct = false; // All values are from possible_values
                                                       return (
                                                         <span
                                                           key={idx}
@@ -580,7 +578,7 @@ export default function CategoriesPage() {
                                                   </div>
                                                 </div>
                                               )}
-                                              {(!feature.values || feature.values.length === 0) && (
+                                              {(!feature.possible_values || feature.possible_values.length === 0) && (
                                                 <p className="text-xs text-gray-500 mt-1 italic">No values yet</p>
                                               )}
                                             </div>
