@@ -53,11 +53,42 @@ export default function CategoriesPage() {
     try {
       const data = await categoriesApi.list();
       console.log('Categories fetched:', data);
-      setCategories(Array.isArray(data) ? data : []);
+      const categoriesArray = Array.isArray(data) ? data : [];
+      setCategories(categoriesArray);
+      if (categoriesArray.length === 0) {
+        console.warn('No categories found. The API might return empty data or the endpoint might not exist.');
+      }
     } catch (error: any) {
       console.error('Error fetching categories:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch categories';
-      setError(errorMessage);
+      console.error('Error response:', error?.response);
+      console.error('Error status:', error?.response?.status);
+      
+      let errorMessage = 'Failed to fetch categories';
+      let errorDetails = '';
+      
+      if (error?.response?.status === 404) {
+        errorMessage = 'Categories endpoint not found (404)';
+        errorDetails = `The categories API endpoint does not exist on your Django backend.\n\n` +
+          `Expected endpoint: /api-v1/admin/categories/\n\n` +
+          `Please check if the endpoint exists in your Django backend.`;
+      } else if (error?.response?.status === 401) {
+        errorMessage = 'Authentication failed (401)';
+        errorDetails = 'Please log out and log in again.';
+      } else if (error?.response?.status === 403) {
+        errorMessage = 'Access denied (403)';
+        errorDetails = 'You may not have permission to view categories.';
+      } else if (error?.response?.data) {
+        errorMessage = 'API Error';
+        errorDetails = error.response.data.detail || 
+                      error.response.data.error_message || 
+                      error.response.data.message ||
+                      JSON.stringify(error.response.data);
+      } else if (error?.message) {
+        errorMessage = 'Error';
+        errorDetails = error.message;
+      }
+      
+      setError(`${errorMessage}\n\n${errorDetails}`);
       setCategories([]);
     } finally {
       setLoading(false);

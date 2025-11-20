@@ -61,14 +61,49 @@ export default function AdminUsersPage() {
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await usersApi.list(searchTerm || undefined);
-      setAllUsers(data);
+      console.log('Users fetched:', data);
+      const usersArray = Array.isArray(data) ? data : [];
+      setAllUsers(usersArray);
       // Filter to show only admin users (staff or superuser)
-      const admins = data.filter((u: User) => u.is_staff || u.is_superuser);
+      const admins = usersArray.filter((u: User) => u.is_staff || u.is_superuser);
       setAdminUsers(admins);
-    } catch (error) {
+      console.log(`Found ${admins.length} admin users out of ${usersArray.length} total users`);
+    } catch (error: any) {
       console.error('Error fetching admin users:', error);
+      console.error('Error response:', error?.response);
+      console.error('Error status:', error?.response?.status);
+      
+      let errorMessage = 'Failed to fetch admin users';
+      let errorDetails = '';
+      
+      if (error?.response?.status === 404) {
+        errorMessage = 'Users endpoint not found (404)';
+        errorDetails = `The users API endpoint does not exist on your Django backend.\n\n` +
+          `Expected endpoint: /api-v1/admin/users/\n\n` +
+          `Please check if the endpoint exists in your Django backend.`;
+      } else if (error?.response?.status === 401) {
+        errorMessage = 'Authentication failed (401)';
+        errorDetails = 'Please log out and log in again.';
+      } else if (error?.response?.status === 403) {
+        errorMessage = 'Access denied (403)';
+        errorDetails = 'You may not have permission to view users.';
+      } else if (error?.response?.data) {
+        errorMessage = 'API Error';
+        errorDetails = error.response.data.detail || 
+                      error.response.data.error_message || 
+                      error.response.data.message ||
+                      JSON.stringify(error.response.data);
+      } else if (error?.message) {
+        errorMessage = 'Error';
+        errorDetails = error.message;
+      }
+      
+      setError(`${errorMessage}\n\n${errorDetails}`);
+      setAllUsers([]);
+      setAdminUsers([]);
     } finally {
       setLoading(false);
     }
@@ -260,6 +295,23 @@ export default function AdminUsersPage() {
             Add Admin User
           </Button>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-red-800">Error Loading Admin Users</h3>
+                <p className="mt-1 text-sm text-red-700">{error}</p>
+                <button
+                  onClick={() => fetchUsers()}
+                  className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-lg shadow p-6">
           <div className="mb-4">

@@ -56,11 +56,43 @@ export default function SubscriptionsPage() {
     setError(null);
     try {
       const data = await subscriptionsApi.list();
-      setSubscriptions(data);
+      console.log('Subscriptions fetched:', data);
+      const subscriptionsArray = Array.isArray(data) ? data : [];
+      setSubscriptions(subscriptionsArray);
+      if (subscriptionsArray.length === 0) {
+        console.warn('No subscriptions found. The API endpoint might not exist or return empty data.');
+      }
     } catch (error: any) {
       console.error('Error fetching subscriptions:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch subscriptions';
-      setError(errorMessage);
+      console.error('Error response:', error?.response);
+      console.error('Error status:', error?.response?.status);
+      
+      let errorMessage = 'Failed to fetch subscriptions';
+      let errorDetails = '';
+      
+      if (error?.response?.status === 404) {
+        errorMessage = 'Subscriptions endpoint not found (404)';
+        errorDetails = `The subscriptions API endpoint does not exist on your Django backend.\n\n` +
+          `Expected endpoint: /api-v1/subscriptions/\n\n` +
+          `Please create the subscriptions endpoint in your Django backend.`;
+      } else if (error?.response?.status === 401) {
+        errorMessage = 'Authentication failed (401)';
+        errorDetails = 'Please log out and log in again.';
+      } else if (error?.response?.status === 403) {
+        errorMessage = 'Access denied (403)';
+        errorDetails = 'You may not have permission to view subscriptions.';
+      } else if (error?.response?.data) {
+        errorMessage = 'API Error';
+        errorDetails = error.response.data.detail || 
+                      error.response.data.error_message || 
+                      error.response.data.message ||
+                      JSON.stringify(error.response.data);
+      } else if (error?.message) {
+        errorMessage = 'Error';
+        errorDetails = error.message;
+      }
+      
+      setError(`${errorMessage}\n\n${errorDetails}`);
       setSubscriptions([]);
     } finally {
       setLoading(false);
