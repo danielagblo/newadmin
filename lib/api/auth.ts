@@ -12,6 +12,16 @@ export const authApi = {
   },
 
   adminLogin: async (data: LoginForm): Promise<LoginResponse> => {
+    // Log request details in development
+    if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE || '/api-v1';
+      console.log('Admin login request:', {
+        url: `${apiUrl}${apiBase}/adminlogin/`,
+        data: { email: data.email, password: '***' },
+      });
+    }
+    
     const response = await apiClient.post<LoginResponse>('/adminlogin/', data);
     if (response.data.token && typeof window !== 'undefined') {
       localStorage.setItem('auth_token', response.data.token);

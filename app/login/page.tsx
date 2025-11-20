@@ -42,34 +42,67 @@ export default function LoginPage() {
       router.push('/');
     } catch (err: any) {
       console.error('Login error:', err);
+      console.error('Error response:', err.response);
+      console.error('Error response data:', err.response?.data);
+      console.error('Error status:', err.response?.status);
       
       let errorMessage = 'Invalid credentials. Please try again.';
+      let errorDetails = '';
       
-      if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+      if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || err.message?.includes('Failed to fetch')) {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const apiBase = process.env.NEXT_PUBLIC_API_BASE || '/api-v1';
-        errorMessage = `Cannot connect to API at ${apiUrl}${apiBase}. Please check:
+        errorMessage = `Cannot connect to API at ${apiUrl}${apiBase}`;
+        errorDetails = `Please check:
 - Is your Django backend running?
 - Is the API URL correct in .env.local?
-- Are there any CORS issues?`;
+- Are there any CORS issues?
+- Check browser console (F12) for more details`;
       } else if (err.response?.status === 404) {
-        errorMessage = `API endpoint not found. Check if the backend is running and the endpoint exists.`;
+        errorMessage = `API endpoint not found (404)`;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE || '/api-v1';
+        const fullUrl = `${apiUrl}${apiBase}/adminlogin/`;
+        errorDetails = `The endpoint ${fullUrl} does not exist. Check if:
+- The backend is running
+- The endpoint path is correct
+- The API base path matches your Django configuration`;
       } else if (err.response?.status === 401) {
-        errorMessage = err.response?.data?.error_message ||
-          err.response?.data?.detail ||
+        errorMessage = 'Authentication failed (401)';
+        const responseData = err.response?.data;
+        errorDetails = responseData?.error_message ||
+          responseData?.detail ||
+          responseData?.message ||
+          responseData?.non_field_errors?.[0] ||
           'Invalid email or password. Please check your credentials.';
+        
+        // Show full response if available
+        if (responseData && Object.keys(responseData).length > 0) {
+          errorDetails += `\n\nResponse: ${JSON.stringify(responseData, null, 2)}`;
+        }
       } else if (err.response?.status === 403) {
-        errorMessage = 'Access denied. Your account may not have admin privileges.';
+        errorMessage = 'Access denied (403)';
+        errorDetails = 'Your account may not have admin privileges. Ensure your user has is_staff=True or is_superuser=True.';
+      } else if (err.response?.status === 400) {
+        errorMessage = 'Bad request (400)';
+        const responseData = err.response?.data;
+        errorDetails = responseData?.error_message ||
+          responseData?.detail ||
+          responseData?.message ||
+          JSON.stringify(responseData, null, 2);
       } else if (err.response?.data) {
-        errorMessage = err.response.data.error_message ||
-          err.response.data.detail ||
-          err.response.data.message ||
-          JSON.stringify(err.response.data);
+        errorMessage = `Error (${err.response?.status || 'Unknown'})`;
+        const responseData = err.response.data;
+        errorDetails = responseData.error_message ||
+          responseData.detail ||
+          responseData.message ||
+          JSON.stringify(responseData, null, 2);
       } else if (err.message) {
-        errorMessage = err.message;
+        errorMessage = 'Login failed';
+        errorDetails = err.message;
       }
       
-      setError(errorMessage);
+      setError(`${errorMessage}${errorDetails ? '\n\n' + errorDetails : ''}`);
     } finally {
       setIsLoading(false);
     }
@@ -89,8 +122,15 @@ export default function LoginPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded whitespace-pre-line">
-              <p className="font-semibold mb-1">Login Failed</p>
-              <p className="text-sm">{error}</p>
+              <p className="font-semibold mb-2">Login Failed</p>
+              <div className="text-sm space-y-1">
+                {error.split('\n\n').map((part, idx) => (
+                  <p key={idx} className={idx === 0 ? 'font-medium' : 'text-xs font-mono bg-red-100 p-2 rounded mt-2 overflow-auto max-h-40'}>{part}</p>
+                ))}
+              </div>
+              <p className="text-xs mt-3 text-red-600">
+                💡 Tip: Open browser console (F12) to see detailed error logs
+              </p>
             </div>
           )}
           
