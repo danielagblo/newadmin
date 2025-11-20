@@ -119,21 +119,19 @@ export interface Category {
 export interface SubCategory {
   id: number;
   category: number;
-  name: string
+  name: string;
   description?: string;
   features?: Feature[];
   created_at: string;
-;
 }
 
 export interface Feature {
   id: number;
   subcategory: number;
-  name: string
+  name: string;
   description?: string;
   possible_values: string[];
   created_at: string;
-;
 }
 
 // Coupon Types
