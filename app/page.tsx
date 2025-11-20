@@ -160,7 +160,7 @@ export default function Dashboard() {
         const categoryCounts: Record<string, number> = {};
         productsArray.forEach((p: Product) => {
           if (p.category) {
-            const catId = typeof p.category === 'object' ? p.category.id : p.category;
+            const catId = String(p.category);
             categoryCounts[catId] = (categoryCounts[catId] || 0) + 1;
           }
         });
@@ -185,10 +185,13 @@ export default function Dashboard() {
         ]);
       } catch (error: any) {
         console.error('Error fetching stats:', error);
+        const apiUrlValue = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE || '/api-v1';
+        const fullApiUrl = `${apiUrlValue}${apiBase}`;
         const errorMessage = error?.response?.status === 401
           ? 'Authentication failed. Please log out and log in again.'
           : error?.response?.status === 404
-          ? `API endpoint not found. Check if API URL is correct: ${apiUrl}`
+          ? `API endpoint not found. Check if API URL is correct: ${fullApiUrl}`
           : error?.message || 'Failed to fetch data from API';
         setError(errorMessage);
       } finally {
@@ -197,6 +200,7 @@ export default function Dashboard() {
     };
 
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const statCards = [
