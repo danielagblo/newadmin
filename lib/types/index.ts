@@ -73,11 +73,10 @@ export interface Category {
 export interface SubCategory {
   id: number;
   category: number;
-  name: string
+  name: string;
   description?: string;
   features?: Feature[];
   created_at: string;
-;
 }
 
 export interface Feature {

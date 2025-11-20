@@ -246,7 +246,6 @@ export default function Dashboard() {
         );
 
         // User Growth Over Time (last 12 months)
-        const now = new Date();
         const monthsData = Array.from({ length: 12 }, (_, i) => {
           const date = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
           const monthName = date.toLocaleDateString('en-US', { month: 'short' });
@@ -297,8 +296,9 @@ export default function Dashboard() {
         ]);
 
         // Daily Active Users (last 30 days) - estimated from user activity
+        const currentDate = new Date();
         const dailyActiveData = Array.from({ length: 30 }, (_, i) => {
-          const date = new Date(now);
+          const date = new Date(currentDate);
           date.setDate(date.getDate() - (29 - i));
           const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           
@@ -319,7 +319,7 @@ export default function Dashboard() {
 
         // User Registration by Day (last 30 days)
         const registrationData = Array.from({ length: 30 }, (_, i) => {
-          const date = new Date(now);
+          const date = new Date(currentDate);
           date.setDate(date.getDate() - (29 - i));
           const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           
