@@ -134,6 +134,7 @@ export interface Alert {
   kind: string;
   user: User | number | undefined;
   read: boolean;
+  is_read?: boolean; // Alias for read
   created_at: string;
 }
 
@@ -272,3 +273,25 @@ export const USER_LEVELS = ['SILVER', 'GOLD', 'DIAMOND'] as const;
 export const SUBSCRIPTION_TIERS = ['BASIC', 'BUSINESS', 'PLATINUM'] as const;
 export const FEEDBACK_CATEGORIES = ['BUG', 'FEATURE', 'IMPROVEMENT', 'COMPLAINT', 'OTHER'] as const;
 export const FEEDBACK_STATUSES = ['PENDING', 'IN_REVIEW', 'RESOLVED', 'REJECTED'] as const;
+export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
+export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
+export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
+export const REGIONS = [
+  'Greater Accra',
+  'Ashanti',
+  'Western',
+  'Eastern',
+  'Central',
+  'Volta',
+  'Northern',
+  'Upper East',
+  'Upper West',
+  'Brong Ahafo',
+  'Western North',
+  'Ahafo',
+  'Bono',
+  'Bono East',
+  'Oti',
+  'North East',
+  'Savannah',
+] as const;

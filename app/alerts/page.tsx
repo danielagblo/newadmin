@@ -300,13 +300,16 @@ export default function AlertsPage() {
     {
       key: 'is_read',
       header: 'Status',
-      render: (alert: Alert) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          alert.is_read ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'
-        }`}>
-          {alert.is_read ? 'Read' : 'Unread'}
-        </span>
-      ),
+      render: (alert: Alert) => {
+        const isRead = alert.is_read !== undefined ? alert.is_read : alert.read;
+        return (
+          <span className={`px-2 py-1 rounded text-xs ${
+            isRead ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'
+          }`}>
+            {isRead ? 'Read' : 'Unread'}
+          </span>
+        );
+      },
     },
     {
       key: 'created_at',
@@ -384,7 +387,7 @@ export default function AlertsPage() {
           {!error && (
             <div className="mb-4 flex justify-between items-center">
               <div className="text-sm text-gray-600">
-                Total alerts: {alerts.length} | Unread: {alerts.filter(a => !a.is_read).length}
+                Total alerts: {alerts.length} | Unread: {alerts.filter(a => !(a.is_read !== undefined ? a.is_read : a.read)).length}
               </div>
               {alerts.length === 0 && (
                 <div className="text-xs text-gray-500">
@@ -399,7 +402,7 @@ export default function AlertsPage() {
             onDelete={handleDelete}
             isLoading={loading}
             actions={(alert: Alert) => (
-              !alert.is_read && (
+              !(alert.is_read !== undefined ? alert.is_read : alert.read) && (
                 <Button
                   variant="outline"
                   size="sm"
