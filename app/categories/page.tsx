@@ -54,7 +54,91 @@ export default function CategoriesPage() {
       const data = await categoriesApi.list();
       console.log('Categories fetched:', data);
       const categoriesArray = Array.isArray(data) ? data : [];
-      setCategories(categoriesArray);
+      
+      // Check if subcategories are already included in the response
+      const hasNestedSubcategories = categoriesArray.some(cat => cat.subcategories && cat.subcategories.length > 0);
+      
+      if (!hasNestedSubcategories) {
+        console.log('Subcategories not included in categories response, fetching separately...');
+        // Fetch all subcategories separately
+        try {
+          const allSubCategories = await subCategoriesApi.list();
+          console.log('All subcategories fetched:', allSubCategories);
+          
+          // Map subcategories to their categories
+          const categoriesWithSubcategories = categoriesArray.map(category => ({
+            ...category,
+            subcategories: allSubCategories.filter(sub => sub.category === category.id)
+          }));
+          
+          // For each subcategory, fetch its features
+          const categoriesWithFeatures = await Promise.all(
+            categoriesWithSubcategories.map(async (category) => {
+              const subcategoriesWithFeatures = await Promise.all(
+                (category.subcategories || []).map(async (subcategory) => {
+                  try {
+                    const features = await featuresApi.list(subcategory.id);
+                    return {
+                      ...subcategory,
+                      features: features || []
+                    };
+                  } catch (error) {
+                    console.error(`Error fetching features for subcategory ${subcategory.id}:`, error);
+                    return {
+                      ...subcategory,
+                      features: []
+                    };
+                  }
+                })
+              );
+              return {
+                ...category,
+                subcategories: subcategoriesWithFeatures
+              };
+            })
+          );
+          
+          setCategories(categoriesWithFeatures);
+          console.log('Categories with subcategories and features:', categoriesWithFeatures);
+        } catch (subError: any) {
+          console.error('Error fetching subcategories:', subError);
+          // If subcategories fetch fails, still set categories without them
+          setCategories(categoriesArray);
+        }
+      } else {
+        // Subcategories are already nested, but we still need to fetch features
+        console.log('Subcategories included in response, fetching features...');
+        const categoriesWithFeatures = await Promise.all(
+          categoriesArray.map(async (category) => {
+            if (category.subcategories && category.subcategories.length > 0) {
+              const subcategoriesWithFeatures = await Promise.all(
+                category.subcategories.map(async (subcategory) => {
+                  try {
+                    const features = await featuresApi.list(subcategory.id);
+                    return {
+                      ...subcategory,
+                      features: features || []
+                    };
+                  } catch (error) {
+                    console.error(`Error fetching features for subcategory ${subcategory.id}:`, error);
+                    return {
+                      ...subcategory,
+                      features: subcategory.features || []
+                    };
+                  }
+                })
+              );
+              return {
+                ...category,
+                subcategories: subcategoriesWithFeatures
+              };
+            }
+            return category;
+          })
+        );
+        setCategories(categoriesWithFeatures);
+      }
+      
       if (categoriesArray.length === 0) {
         console.warn('No categories found. The API might return empty data or the endpoint might not exist.');
       }
