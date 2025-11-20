@@ -74,12 +74,17 @@ export default function CouponsPage() {
 
   const handleEdit = (coupon: Coupon) => {
     setEditingCoupon(coupon);
+    // Convert discount_type from API format (PERCENT/FIXED) to form format (percent/fixed)
+    const discountType = coupon.discount_type?.toLowerCase() === 'percent' || coupon.discount_type === 'PERCENT' 
+      ? 'percent' 
+      : 'fixed';
+    
     setFormData({
       code: coupon.code,
-      description: '',
-      discount_type: coupon.discount_type,
+      description: coupon.description || '',
+      discount_type: discountType,
       discount_value: coupon.discount_value,
-      max_uses: coupon.usage_limit?.toString() || '',
+      max_uses: coupon.max_uses?.toString() || '',
       per_user_limit: coupon.per_user_limit?.toString() || '',
       valid_from: coupon.valid_from ? format(new Date(coupon.valid_from), "yyyy-MM-dd'T'HH:mm") : '',
       valid_until: coupon.valid_until ? format(new Date(coupon.valid_until), "yyyy-MM-dd'T'HH:mm") : '',
@@ -111,15 +116,10 @@ export default function CouponsPage() {
     e.preventDefault();
     try {
       const submitData: any = {
-        code: formData.code,
-        discount_type: formData.discount_type,
-        discount_value: parseFloat(formData.discount_value).toString(),
-        usage_limit: formData.max_uses ? parseInt(formData.max_uses) : undefined,
-        min_purchase: formData.min_purchase || undefined,
-        max_discount: formData.max_discount || undefined,
-        valid_from: formData.valid_from || undefined,
-        valid_until: formData.valid_until || undefined,
-        is_active: formData.is_active,
+        ...formData,
+        discount_value: parseFloat(formData.discount_value),
+        max_uses: formData.max_uses ? parseInt(formData.max_uses) : undefined,
+        per_user_limit: formData.per_user_limit ? parseInt(formData.per_user_limit) : undefined,
         valid_from: formData.valid_from || undefined,
         valid_until: formData.valid_until || undefined,
       };
