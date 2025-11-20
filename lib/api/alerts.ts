@@ -33,16 +33,16 @@ export const alertsApi = {
   list: async (): Promise<Alert[]> => {
     // Based on Django admin: /admin/notifications/alert/add/
     // The list endpoint should be /api-v1/admin/notifications/alert/ (without /add/)
+    // IMPORTANT: Use admin endpoint to get ALL alerts, not just current user's
     // Try multiple possible endpoint paths based on Django backend structure
     
     const endpoints = [
-      // Based on Django admin path (most likely)
+      // Admin endpoints first (to get ALL alerts, not filtered by user)
       '/admin/notifications/alert/',
       '/admin/notifications/alerts/',
-      // Alternative admin endpoints
       '/admin/alerts/',
       '/admin/notifications/',
-      // Standard endpoints
+      // Standard endpoints (might be filtered by user)
       '/alerts/',
       '/notifications/alert/',
       '/notifications/alerts/',
@@ -52,14 +52,50 @@ export const alertsApi = {
     for (const endpoint of endpoints) {
       try {
         console.log(`Trying alerts list endpoint: ${apiClient.defaults.baseURL}${endpoint}`);
-        const response = await apiClient.get<Alert[] | { results: Alert[] }>(endpoint);
-        // Handle both array and paginated responses
+        const response = await apiClient.get<Alert[] | { results: Alert[]; count?: number; next?: string }>(endpoint);
+        
+        // Handle paginated responses - fetch all pages
+        if (response.data && typeof response.data === 'object' && 'results' in response.data) {
+          const paginatedData = response.data as { results: Alert[]; count?: number; next?: string };
+          let allAlerts = [...paginatedData.results];
+          
+          // If there are more pages, fetch them all
+          let nextUrl = paginatedData.next;
+          while (nextUrl) {
+            try {
+              console.log(`Fetching next page: ${nextUrl}`);
+              // Handle both relative and absolute URLs
+              let endpoint = nextUrl;
+              if (nextUrl.startsWith('http')) {
+                // Absolute URL - extract the path
+                const urlObj = new URL(nextUrl);
+                endpoint = urlObj.pathname + urlObj.search;
+              } else if (nextUrl.startsWith(apiClient.defaults.baseURL || '')) {
+                // URL with base, extract path
+                endpoint = nextUrl.replace(apiClient.defaults.baseURL || '', '');
+              }
+              const nextResponse = await apiClient.get<{ results: Alert[]; next?: string }>(endpoint);
+              allAlerts = [...allAlerts, ...nextResponse.data.results];
+              nextUrl = nextResponse.data.next;
+            } catch (err) {
+              console.warn('Error fetching next page:', err);
+              break;
+            }
+          }
+          
+          console.log(`✅ Successfully fetched ${allAlerts.length} alerts from ${endpoint} (${paginatedData.count || allAlerts.length} total)`);
+          return allAlerts;
+        }
+        
+        // Handle array responses
         if (Array.isArray(response.data)) {
-          console.log(`✅ Successfully fetched alerts from ${endpoint} (${response.data.length} alerts)`);
+          console.log(`✅ Successfully fetched ${response.data.length} alerts from ${endpoint}`);
           return response.data;
         }
+        
+        // Fallback
         const results = (response.data as any).results || [];
-        console.log(`✅ Successfully fetched alerts from ${endpoint} (${results.length} alerts)`);
+        console.log(`✅ Successfully fetched ${results.length} alerts from ${endpoint}`);
         return results;
       } catch (error: any) {
         console.log(`❌ Endpoint ${endpoint} failed:`, error.response?.status, error.response?.statusText);
@@ -77,11 +113,11 @@ export const alertsApi = {
       console.log(`Trying alerts endpoint: ${notificationsClient.defaults.baseURL}/alerts/`);
       const response = await notificationsClient.get<Alert[] | { results: Alert[] }>('/alerts/');
       if (Array.isArray(response.data)) {
-        console.log(`✅ Successfully fetched alerts from /notifications/alerts/ (${response.data.length} alerts)`);
+        console.log(`✅ Successfully fetched ${response.data.length} alerts from /notifications/alerts/`);
         return response.data;
       }
       const results = (response.data as any).results || [];
-      console.log(`✅ Successfully fetched alerts from /notifications/alerts/ (${results.length} alerts)`);
+      console.log(`✅ Successfully fetched ${results.length} alerts from /notifications/alerts/`);
       return results;
     } catch (error: any) {
       console.log(`❌ Endpoint /notifications/alerts/ failed:`, error.response?.status);

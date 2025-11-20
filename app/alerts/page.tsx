@@ -50,10 +50,18 @@ export default function AlertsPage() {
       console.log('Alerts fetched:', data);
       console.log('Number of alerts:', Array.isArray(data) ? data.length : 0);
       const alertsArray = Array.isArray(data) ? data : [];
+      console.log('Alerts data structure:', alertsArray.length > 0 ? {
+        firstAlert: alertsArray[0],
+        userField: alertsArray[0]?.user,
+        userType: typeof alertsArray[0]?.user,
+      } : 'No alerts');
+      
       setAlerts(alertsArray);
       
       if (alertsArray.length === 0) {
         console.warn('No alerts found. If you added alerts in Django admin, check if the endpoint is correct.');
+      } else {
+        console.log(`✅ Loaded ${alertsArray.length} alerts. Sample:`, alertsArray.slice(0, 3));
       }
     } catch (error: any) {
       console.error('Error fetching alerts:', error);
@@ -217,15 +225,42 @@ export default function AlertsPage() {
     { key: 'id', header: 'ID' },
     {
       key: 'user',
-      header: 'User',
-      render: (alert: Alert) => alert.user ? `${alert.user.name} (${alert.user.email})` : '-',
+      header: 'Recipient',
+      render: (alert: Alert) => {
+        // Handle user as object
+        if (alert.user && typeof alert.user === 'object') {
+          return (
+            <div className="text-sm">
+              <div className="font-medium">{alert.user.name || 'Unknown'}</div>
+              <div className="text-gray-500 text-xs">{alert.user.email || ''}</div>
+            </div>
+          );
+        }
+        // Handle user as ID (number)
+        if (alert.user && typeof alert.user === 'number') {
+          const user = users.find(u => u.id === alert.user);
+          if (user) {
+            return (
+              <div className="text-sm">
+                <div className="font-medium">{user.name}</div>
+                <div className="text-gray-500 text-xs">{user.email}</div>
+              </div>
+            );
+          }
+          return <span className="text-gray-500">User ID: {alert.user}</span>;
+        }
+        // No user specified = sent to all users
+        return <span className="text-blue-600 font-medium">All Users</span>;
+      },
     },
     { key: 'title', header: 'Title' },
     {
       key: 'body',
-      header: 'Body',
+      header: 'Message',
       render: (alert: Alert) => (
-        <div className="max-w-md truncate">{alert.body}</div>
+        <div className="max-w-lg">
+          <div className="line-clamp-2 text-sm">{alert.body}</div>
+        </div>
       ),
     },
     {
