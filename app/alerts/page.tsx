@@ -514,6 +514,12 @@ export default function AlertsPage() {
                       // Users with Referral Activity
                       const usersWithReferrals = users.filter(u => u.referral_points > 0 && u.is_active);
                       
+                      // Top 100 Users with Most Active Ads
+                      const topActiveAdsUsers = users
+                        .filter(u => u.is_active && u.active_ads && u.active_ads > 0)
+                        .sort((a, b) => (b.active_ads || 0) - (a.active_ads || 0))
+                        .slice(0, 100);
+                      
                       const toggleGroup = (groupUserIds: number[]) => {
                         const allSelected = groupUserIds.every(id => notificationForm.userIds.includes(id));
                         if (allSelected) {
@@ -1052,6 +1058,40 @@ export default function AlertsPage() {
                                     />
                                     <span className="text-sm text-gray-700">
                                       {user.name} ({user.email}) - {user.referral_points} points
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Top 100 Users with Most Active Ads */}
+                          {topActiveAdsUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={topActiveAdsUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(topActiveAdsUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                  <span className="text-sm font-semibold text-emerald-700">
+                                    🏆 Top 100 Users with Most Active Ads ({topActiveAdsUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {topActiveAdsUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email}) - {user.active_ads || 0} active ads
                                     </span>
                                   </label>
                                 ))}

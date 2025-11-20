@@ -317,6 +317,12 @@ export default function ChatRoomsPage() {
                   // Staff/Admin Users
                   const staffUsers = users.filter(u => (u.is_staff || u.is_superuser) && u.is_active);
                   
+                  // Top 100 Users with Most Active Ads
+                  const topActiveAdsUsers = users
+                    .filter(u => u.is_active && u.active_ads && u.active_ads > 0)
+                    .sort((a, b) => (b.active_ads || 0) - (a.active_ads || 0))
+                    .slice(0, 100);
+                  
                   const toggleGroup = (groupUserIds: number[]) => {
                     const allSelected = groupUserIds.every(id => formData.members.includes(id));
                     if (allSelected) {
@@ -685,6 +691,40 @@ export default function ChatRoomsPage() {
                                 <span className="text-sm text-gray-700">
                                   {user.name} ({user.email})
                                   {user.is_superuser && <span className="ml-2 text-xs text-purple-600">Superuser</span>}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Top 100 Users with Most Active Ads */}
+                      {topActiveAdsUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={topActiveAdsUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(topActiveAdsUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span className="text-sm font-semibold text-emerald-700">
+                                🏆 Top 100 Users with Most Active Ads ({topActiveAdsUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {topActiveAdsUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email}) - {user.active_ads || 0} active ads
                                 </span>
                               </label>
                             ))}
