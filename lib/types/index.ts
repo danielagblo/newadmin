@@ -170,7 +170,7 @@ export interface Message {
 // Alert Types
 export interface Alert {
   id: number;
-  user?: User; // Optional, only included in admin views
+  user?: User | number; // Optional, can be User object or user ID (number)
   title: string;
   body: string;
   kind?: string;

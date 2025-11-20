@@ -228,17 +228,19 @@ export default function AlertsPage() {
       header: 'Recipient',
       render: (alert: Alert) => {
         // Handle user as object
-        if (alert.user && typeof alert.user === 'object') {
+        if (alert.user && typeof alert.user === 'object' && 'name' in alert.user) {
+          const userObj = alert.user as User;
           return (
             <div className="text-sm">
-              <div className="font-medium">{alert.user.name || 'Unknown'}</div>
-              <div className="text-gray-500 text-xs">{alert.user.email || ''}</div>
+              <div className="font-medium">{userObj.name || 'Unknown'}</div>
+              <div className="text-gray-500 text-xs">{userObj.email || ''}</div>
             </div>
           );
         }
         // Handle user as ID (number)
         if (alert.user && typeof alert.user === 'number') {
-          const user = users.find(u => u.id === alert.user);
+          const userId = alert.user;
+          const user = users.find(u => u.id === userId);
           if (user) {
             return (
               <div className="text-sm">
@@ -247,7 +249,7 @@ export default function AlertsPage() {
               </div>
             );
           }
-          return <span className="text-gray-500">User ID: {alert.user}</span>;
+          return <span className="text-gray-500">User ID: {userId}</span>;
         }
         // No user specified = sent to all users
         return <span className="text-blue-600 font-medium">All Users</span>;
