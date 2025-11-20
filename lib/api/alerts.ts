@@ -31,31 +31,38 @@ notificationsClient.interceptors.request.use(
 
 export const alertsApi = {
   list: async (): Promise<Alert[]> => {
+    // Based on Django admin: /admin/notifications/alert/add/
+    // The list endpoint should be /api-v1/admin/notifications/alert/ (without /add/)
     // Try multiple possible endpoint paths based on Django backend structure
-    // Pattern 1: /admin/alerts/ (admin panel endpoint under /api-v1/)
-    // Pattern 2: /alerts/ (standard endpoint under /api-v1/)
-    // Pattern 3: /notifications/alerts/ (if alerts are under notifications like devices)
     
-    // Try api-v1 endpoints first
-    const apiV1Endpoints = [
+    const endpoints = [
+      // Based on Django admin path (most likely)
+      '/admin/notifications/alert/',
+      '/admin/notifications/alerts/',
+      // Alternative admin endpoints
       '/admin/alerts/',
+      '/admin/notifications/',
+      // Standard endpoints
       '/alerts/',
+      '/notifications/alert/',
+      '/notifications/alerts/',
     ];
 
-    for (const endpoint of apiV1Endpoints) {
+    // Try api-v1 endpoints first
+    for (const endpoint of endpoints) {
       try {
-        console.log(`Trying alerts endpoint: ${apiClient.defaults.baseURL}${endpoint}`);
+        console.log(`Trying alerts list endpoint: ${apiClient.defaults.baseURL}${endpoint}`);
         const response = await apiClient.get<Alert[] | { results: Alert[] }>(endpoint);
         // Handle both array and paginated responses
         if (Array.isArray(response.data)) {
-          console.log(`✅ Successfully fetched alerts from ${endpoint}`);
+          console.log(`✅ Successfully fetched alerts from ${endpoint} (${response.data.length} alerts)`);
           return response.data;
         }
         const results = (response.data as any).results || [];
-        console.log(`✅ Successfully fetched alerts from ${endpoint}`);
+        console.log(`✅ Successfully fetched alerts from ${endpoint} (${results.length} alerts)`);
         return results;
       } catch (error: any) {
-        console.log(`❌ Endpoint ${endpoint} failed:`, error.response?.status);
+        console.log(`❌ Endpoint ${endpoint} failed:`, error.response?.status, error.response?.statusText);
         // Continue to next endpoint if 404
         if (error.response?.status === 404) {
           continue;
@@ -70,16 +77,16 @@ export const alertsApi = {
       console.log(`Trying alerts endpoint: ${notificationsClient.defaults.baseURL}/alerts/`);
       const response = await notificationsClient.get<Alert[] | { results: Alert[] }>('/alerts/');
       if (Array.isArray(response.data)) {
-        console.log(`✅ Successfully fetched alerts from /notifications/alerts/`);
+        console.log(`✅ Successfully fetched alerts from /notifications/alerts/ (${response.data.length} alerts)`);
         return response.data;
       }
       const results = (response.data as any).results || [];
-      console.log(`✅ Successfully fetched alerts from /notifications/alerts/`);
+      console.log(`✅ Successfully fetched alerts from /notifications/alerts/ (${results.length} alerts)`);
       return results;
     } catch (error: any) {
       console.log(`❌ Endpoint /notifications/alerts/ failed:`, error.response?.status);
       // If all endpoints failed, throw the error
-      throw new Error(`Alerts endpoint not found. Tried: /admin/alerts/, /alerts/, and /notifications/alerts/. Last error: ${error.response?.status || error.message}`);
+      throw new Error(`Alerts endpoint not found. Tried multiple endpoints. Last error: ${error.response?.status || error.message}`);
     }
   },
 

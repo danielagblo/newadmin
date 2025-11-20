@@ -12,7 +12,7 @@ import { alertsApi } from '@/lib/api/alerts';
 import { usersApi } from '@/lib/api/users';
 import { Alert, User } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Send } from 'lucide-react';
+import { Plus, Send, RefreshCw } from 'lucide-react';
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -48,7 +48,13 @@ export default function AlertsPage() {
     try {
       const data = await alertsApi.list();
       console.log('Alerts fetched:', data);
-      setAlerts(Array.isArray(data) ? data : []);
+      console.log('Number of alerts:', Array.isArray(data) ? data.length : 0);
+      const alertsArray = Array.isArray(data) ? data : [];
+      setAlerts(alertsArray);
+      
+      if (alertsArray.length === 0) {
+        console.warn('No alerts found. If you added alerts in Django admin, check if the endpoint is correct.');
+      }
     } catch (error: any) {
       console.error('Error fetching alerts:', error);
       console.error('Error response:', error?.response);
@@ -254,6 +260,10 @@ export default function AlertsPage() {
             <Button onClick={handleOpenSendModal}>
               <Plus className="h-4 w-4 mr-2" />
               Send Notification
+            </Button>
+            <Button onClick={fetchAlerts} variant="outline" disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
             <Button onClick={handleMarkAllRead} variant="outline">
               Mark All Read
