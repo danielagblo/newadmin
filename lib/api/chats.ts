@@ -12,6 +12,28 @@ export const chatRoomsApi = {
     return response.data;
   },
 
+  create: async (data: {
+    name: string;
+    is_group: boolean;
+    members?: number[]; // Array of user IDs
+  }): Promise<ChatRoom> => {
+    const response = await apiClient.post<ChatRoom>('/chatrooms/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: {
+    name?: string;
+    is_group?: boolean;
+    members?: number[]; // Array of user IDs
+  }): Promise<ChatRoom> => {
+    const response = await apiClient.put<ChatRoom>(`/chatrooms/${id}/`, data);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await apiClient.delete(`/chatrooms/${id}/`);
+  },
+
   getMessages: async (id: number): Promise<Message[]> => {
     const response = await apiClient.get<Message[]>(`/chatrooms/${id}/messages/`);
     return response.data;
