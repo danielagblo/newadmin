@@ -253,7 +253,7 @@ export default function AlertsPage() {
                   <div className="text-xs text-red-600 space-y-1">
                     <p>💡 <strong>Check browser console (F12)</strong> to see which endpoints were tried</p>
                     <p>📚 <strong>Check API docs:</strong> <a href="https://api.oysloe.com/api/docs/" target="_blank" rel="noopener noreferrer" className="underline">https://api.oysloe.com/api/docs/</a></p>
-                    <p>⚠️ <strong>If endpoint doesn't exist:</strong> You may need to create the alerts endpoint in your Django backend</p>
+                    <p>⚠️ <strong>If endpoint doesn&apos;t exist:</strong> You may need to create the alerts endpoint in your Django backend</p>
                   </div>
                 </div>
               </div>
