@@ -221,7 +221,7 @@ export default function AlertsPage() {
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-gray-900">Push Notifications</h1>
           <div className="flex gap-2">
-            <Button onClick={handleOpenSendModal} variant="default">
+            <Button onClick={handleOpenSendModal}>
               <Plus className="h-4 w-4 mr-2" />
               Send Notification
             </Button>
