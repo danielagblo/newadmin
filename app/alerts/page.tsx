@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
-import { Select } from '@/components/ui/Select';
 import { alertsApi } from '@/lib/api/alerts';
 import { usersApi } from '@/lib/api/users';
 import { Alert, User } from '@/lib/types';
@@ -25,7 +24,8 @@ export default function AlertsPage() {
     title: '',
     body: '',
     kind: '',
-    userId: '' as string | number,
+    userIds: [] as number[], // Changed to array for multiple selection
+    sendToAll: false,
   });
 
   useEffect(() => {
@@ -152,7 +152,8 @@ export default function AlertsPage() {
       title: '',
       body: '',
       kind: '',
-      userId: '',
+      userIds: [],
+      sendToAll: false,
     });
     setIsSendModalOpen(true);
   };
@@ -161,29 +162,47 @@ export default function AlertsPage() {
     e.preventDefault();
     setSending(true);
     try {
-      const alertData: any = {
+      const baseAlertData: any = {
         title: notificationForm.title,
         body: notificationForm.body,
       };
 
       if (notificationForm.kind) {
-        alertData.kind = notificationForm.kind;
+        baseAlertData.kind = notificationForm.kind;
       }
 
-      if (notificationForm.userId && notificationForm.userId !== 'all') {
-        alertData.user = parseInt(notificationForm.userId as string);
+      // Send to all users or specific users
+      if (notificationForm.sendToAll) {
+        // Send to all users (no user field)
+        await alertsApi.create(baseAlertData);
+      } else if (notificationForm.userIds.length > 0) {
+        // Send to multiple selected users
+        const promises = notificationForm.userIds.map(userId => {
+          return alertsApi.create({
+            ...baseAlertData,
+            user: userId,
+          });
+        });
+        await Promise.all(promises);
+      } else {
+        window.alert('Please select at least one user or choose "All Users"');
+        setSending(false);
+        return;
       }
 
-      await alertsApi.create(alertData);
       setIsSendModalOpen(false);
       setNotificationForm({
         title: '',
         body: '',
         kind: '',
-        userId: '',
+        userIds: [],
+        sendToAll: false,
       });
       fetchAlerts();
-      window.alert('Push notification sent successfully!');
+      const userCount = notificationForm.sendToAll 
+        ? 'all users' 
+        : `${notificationForm.userIds.length} user(s)`;
+      window.alert(`Push notification sent successfully to ${userCount}!`);
     } catch (error: any) {
       console.error('Error sending notification:', error);
       console.error('Error response:', error?.response);
@@ -425,18 +444,63 @@ export default function AlertsPage() {
               placeholder="e.g., info, warning, success, error"
             />
 
-            <Select
-              label="Send To"
-              value={notificationForm.userId}
-              onChange={(e) => setNotificationForm({ ...notificationForm, userId: e.target.value })}
-              options={[
-                { value: 'all', label: 'All Users' },
-                ...users.map((user) => ({
-                  value: user.id.toString(),
-                  label: `${user.name} (${user.email})`,
-                })),
-              ]}
-            />
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Send To
+              </label>
+              
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={notificationForm.sendToAll}
+                    onChange={(e) => {
+                      setNotificationForm({
+                        ...notificationForm,
+                        sendToAll: e.target.checked,
+                        userIds: e.target.checked ? [] : notificationForm.userIds,
+                      });
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">All Users</span>
+                </label>
+
+                {!notificationForm.sendToAll && (
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Select Users (Hold Ctrl/Cmd to select multiple)
+                    </label>
+                    <select
+                      multiple
+                      value={notificationForm.userIds.map(String)}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+                        setNotificationForm({
+                          ...notificationForm,
+                          userIds: selected,
+                        });
+                      }}
+                      className="w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent min-h-[150px]"
+                    >
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} ({user.email})
+                        </option>
+                      ))}
+                    </select>
+                    {notificationForm.userIds.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {notificationForm.userIds.length} user(s) selected: {notificationForm.userIds.map(id => {
+                          const user = users.find(u => u.id === id);
+                          return user?.name || `User ${id}`;
+                        }).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button
