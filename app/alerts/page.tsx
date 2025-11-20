@@ -490,7 +490,7 @@ export default function AlertsPage() {
                           // Select all in group
                           setNotificationForm({
                             ...notificationForm,
-                            userIds: [...new Set([...notificationForm.userIds, ...groupUserIds])],
+                            userIds: Array.from(new Set([...notificationForm.userIds, ...groupUserIds])),
                           });
                         }
                       };
