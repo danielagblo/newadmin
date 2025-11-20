@@ -277,29 +277,432 @@ export default function ChatRoomsPage() {
               <label className="block text-sm font-medium text-gray-700">
                 Members {formData.is_group ? '(Select multiple)' : '(Select 2 for direct chat)'}
               </label>
-              <select
-                multiple
-                value={formData.members.map(String)}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                  setFormData({ ...formData, members: selected });
-                }}
-                className="w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent min-h-[120px]"
-              >
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name} ({user.email})
-                  </option>
-                ))}
-              </select>
-              {formData.members.length > 0 && (
-                <p className="text-xs text-gray-500">
-                  {formData.members.length} member(s) selected: {formData.members.map(id => {
-                    const user = users.find(u => u.id === id);
-                    return user?.name || `User ${id}`;
-                  }).join(', ')}
-                </p>
-              )}
+              <div className="space-y-4 max-h-[400px] overflow-y-auto border border-gray-200 rounded-lg p-4">
+                {(() => {
+                  // Group users by verification status and other criteria
+                  const now = new Date();
+                  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                  
+                  // Verified users who have submitted ads
+                  const verifiedWithAds = users.filter(u => 
+                    u.admin_verified && 
+                    new Date(u.created_at) <= thirtyDaysAgo &&
+                    u.is_active &&
+                    ((u.active_ads && u.active_ads > 0) || (u.taken_ads && u.taken_ads > 0))
+                  );
+                  
+                  // Verified users who haven't submitted any ads
+                  const verifiedNoAds = users.filter(u => 
+                    u.admin_verified && 
+                    new Date(u.created_at) <= thirtyDaysAgo &&
+                    u.is_active &&
+                    (!u.active_ads || u.active_ads === 0) &&
+                    (!u.taken_ads || u.taken_ads === 0)
+                  );
+                  
+                  const unverifiedUsers = users.filter(u => !u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo && u.is_active);
+                  const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo && u.is_active);
+                  
+                  // User Level Groups
+                  const diamondUsers = users.filter(u => u.level === 'DIAMOND' && u.is_active);
+                  const goldUsers = users.filter(u => u.level === 'GOLD' && u.is_active);
+                  const silverUsers = users.filter(u => u.level === 'SILVER' && u.is_active);
+                  
+                  // Business Users
+                  const businessUsers = users.filter(u => u.business_name && u.business_name.trim() !== '' && u.is_active);
+                  
+                  // Fully Verified
+                  const fullyVerifiedUsers = users.filter(u => u.phone_verified && u.email_verified && u.is_active);
+                  
+                  // Staff/Admin Users
+                  const staffUsers = users.filter(u => (u.is_staff || u.is_superuser) && u.is_active);
+                  
+                  const toggleGroup = (groupUserIds: number[]) => {
+                    const allSelected = groupUserIds.every(id => formData.members.includes(id));
+                    if (allSelected) {
+                      setFormData({
+                        ...formData,
+                        members: formData.members.filter(id => !groupUserIds.includes(id)),
+                      });
+                    } else {
+                      setFormData({
+                        ...formData,
+                        members: Array.from(new Set([...formData.members, ...groupUserIds])),
+                      });
+                    }
+                  };
+                  
+                  const toggleUser = (userId: number) => {
+                    if (formData.members.includes(userId)) {
+                      setFormData({
+                        ...formData,
+                        members: formData.members.filter(id => id !== userId),
+                      });
+                    } else {
+                      setFormData({
+                        ...formData,
+                        members: [...formData.members, userId],
+                      });
+                    }
+                  };
+                  
+                  return (
+                    <>
+                      {/* Verified Users with Ads */}
+                      {verifiedWithAds.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={verifiedWithAds.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(verifiedWithAds.map(u => u.id))}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-sm font-semibold text-blue-700">
+                                Verified Users with Ads ({verifiedWithAds.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {verifiedWithAds.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Verified Users without Ads */}
+                      {verifiedNoAds.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={verifiedNoAds.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(verifiedNoAds.map(u => u.id))}
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span className="text-sm font-semibold text-purple-700">
+                                Verified Users (No Ads) ({verifiedNoAds.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {verifiedNoAds.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Unverified Users */}
+                      {unverifiedUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={unverifiedUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(unverifiedUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-sm font-semibold text-gray-700">
+                                Unverified Users ({unverifiedUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {unverifiedUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* New Users */}
+                      {newUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={newUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(newUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-sm font-semibold text-green-700">
+                                New Users (Last 30 days) ({newUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {newUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                  {user.admin_verified && (
+                                    <span className="ml-2 text-xs text-blue-600">✓ Verified</span>
+                                  )}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Diamond Level Users */}
+                      {diamondUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={diamondUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(diamondUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span className="text-sm font-semibold text-purple-700">
+                                💎 Diamond Level Users ({diamondUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {diamondUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Gold Level Users */}
+                      {goldUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={goldUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(goldUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                              />
+                              <span className="text-sm font-semibold text-yellow-700">
+                                🥇 Gold Level Users ({goldUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {goldUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Silver Level Users */}
+                      {silverUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={silverUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(silverUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                              />
+                              <span className="text-sm font-semibold text-gray-700">
+                                🥈 Silver Level Users ({silverUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {silverUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Business Users */}
+                      {businessUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={businessUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(businessUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span className="text-sm font-semibold text-indigo-700">
+                                🏢 Business Users ({businessUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {businessUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.business_name}) - {user.email}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Fully Verified Users */}
+                      {fullyVerifiedUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={fullyVerifiedUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(fullyVerifiedUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-sm font-semibold text-green-700">
+                                ✓ Fully Verified (Phone + Email) ({fullyVerifiedUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {fullyVerifiedUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Staff/Admin Users */}
+                      {staffUsers.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                            <label className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={staffUsers.every(u => formData.members.includes(u.id))}
+                                onChange={() => toggleGroup(staffUsers.map(u => u.id))}
+                                className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              />
+                              <span className="text-sm font-semibold text-orange-700">
+                                👥 Staff/Admin Users ({staffUsers.length})
+                              </span>
+                            </label>
+                          </div>
+                          <div className="pl-6 space-y-1">
+                            {staffUsers.map((user) => (
+                              <label key={user.id} className="flex items-center space-x-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.members.includes(user.id)}
+                                  onChange={() => toggleUser(user.id)}
+                                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <span className="text-sm text-gray-700">
+                                  {user.name} ({user.email})
+                                  {user.is_superuser && <span className="ml-2 text-xs text-purple-600">Superuser</span>}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {formData.members.length > 0 && (
+                        <div className="pt-2 border-t border-gray-200">
+                          <p className="text-sm font-medium text-gray-700">
+                            {formData.members.length} member(s) selected
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             </div>
 
             <div className="flex justify-end space-x-2 pt-4">
