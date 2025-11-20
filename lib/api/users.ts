@@ -3,9 +3,72 @@ import { User, CreateUserForm, UpdateUserForm, PaginatedResponse } from '../type
 
 export const usersApi = {
   list: async (search?: string): Promise<User[]> => {
-    const params = search ? { q: search } : {};
-    const response = await apiClient.get<User[]>('/admin/users/', { params });
-    return response.data;
+    const params: any = {};
+    if (search) {
+      params.q = search;
+      params.search = search; // Try both 'q' and 'search' parameters
+    }
+    
+    console.log('Fetching users from /admin/users/ with params:', params);
+    
+    try {
+      const response = await apiClient.get<User[] | PaginatedResponse<User>>('/admin/users/', { params });
+      console.log('Users API response:', response.data);
+      
+      // Handle array response
+      if (Array.isArray(response.data)) {
+        console.log(`✅ Fetched ${response.data.length} users (array format)`);
+        return response.data;
+      }
+      
+      // Handle paginated response
+      const paginatedData = response.data as PaginatedResponse<User>;
+      if (paginatedData.results && Array.isArray(paginatedData.results)) {
+        let allUsers = [...paginatedData.results];
+        console.log(`✅ Fetched ${allUsers.length} users from page 1 (paginated format)`);
+        
+        // Fetch all remaining pages if paginated
+        if (paginatedData.next) {
+          let currentPage = 2;
+          let hasMore = true;
+          
+          while (hasMore) {
+            try {
+              const pageParams = { ...params, page: currentPage };
+              const pageResponse = await apiClient.get<PaginatedResponse<User>>('/admin/users/', { params: pageParams });
+              const pageData = pageResponse.data;
+              
+              if (pageData.results && Array.isArray(pageData.results)) {
+                allUsers = [...allUsers, ...pageData.results];
+                console.log(`✅ Fetched ${pageData.results.length} users from page ${currentPage}`);
+                
+                if (pageData.next) {
+                  currentPage++;
+                } else {
+                  hasMore = false;
+                }
+              } else {
+                hasMore = false;
+              }
+            } catch (error) {
+              console.error(`Error fetching page ${currentPage}:`, error);
+              hasMore = false;
+            }
+          }
+        }
+        
+        console.log(`✅ Total users fetched: ${allUsers.length}`);
+        return allUsers;
+      }
+      
+      // If response format is unexpected, return empty array
+      console.warn('⚠️ Unexpected response format:', response.data);
+      return [];
+    } catch (error: any) {
+      console.error('❌ Error fetching users:', error);
+      console.error('Error response:', error?.response);
+      throw error;
+    }
   },
 
   get: async (id: number): Promise<User> => {
