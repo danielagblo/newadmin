@@ -3,8 +3,37 @@ import { Category, SubCategory, Feature, CreateCategoryForm, CreateSubCategoryFo
 
 export const categoriesApi = {
   list: async (): Promise<Category[]> => {
-    const response = await apiClient.get<Category[]>('/admin/categories/');
-    return response.data;
+    // Try admin endpoint first (includes subcategories), fallback to regular endpoint
+    try {
+      console.log('Trying categories endpoint: /admin/categories/');
+      const response = await apiClient.get<Category[] | { results: Category[] }>('/admin/categories/');
+      console.log('✅ Successfully fetched categories from /admin/categories/');
+      // Handle both array and paginated response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // Handle paginated response
+      const paginatedData = response.data as any;
+      return Array.isArray(paginatedData.results) ? paginatedData.results : [];
+    } catch (error: any) {
+      console.log('❌ /admin/categories/ failed:', error.response?.status);
+      // Fallback to regular categories endpoint
+      try {
+        console.log('Trying categories endpoint: /categories/');
+        const response = await apiClient.get<Category[] | { results: Category[] }>('/categories/');
+        console.log('✅ Successfully fetched categories from /categories/');
+        // Handle both array and paginated response
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        // Handle paginated response
+        const paginatedData = response.data as any;
+        return Array.isArray(paginatedData.results) ? paginatedData.results : [];
+      } catch (fallbackError: any) {
+        console.log('❌ /categories/ also failed:', fallbackError.response?.status);
+        throw fallbackError; // Throw the last error
+      }
+    }
   },
 
   get: async (id: number): Promise<Category> => {
