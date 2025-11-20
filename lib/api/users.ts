@@ -18,7 +18,16 @@ export const usersApi = {
       // Handle array response
       if (Array.isArray(response.data)) {
         console.log(`✅ Fetched ${response.data.length} users (array format)`);
-        return response.data;
+        // Validate user objects
+        const validUsers = response.data.filter((user: any) => {
+          const isValid = user && typeof user === 'object' && (user.id !== undefined || user.email !== undefined);
+          if (!isValid) {
+            console.warn('Invalid user object found:', user);
+          }
+          return isValid;
+        });
+        console.log(`✅ Validated ${validUsers.length} valid users out of ${response.data.length}`);
+        return validUsers;
       }
       
       // Handle paginated response
@@ -26,6 +35,15 @@ export const usersApi = {
       if (paginatedData.results && Array.isArray(paginatedData.results)) {
         let allUsers = [...paginatedData.results];
         console.log(`✅ Fetched ${allUsers.length} users from page 1 (paginated format)`);
+        
+        // Validate users
+        allUsers = allUsers.filter((user: any) => {
+          const isValid = user && typeof user === 'object' && (user.id !== undefined || user.email !== undefined);
+          if (!isValid) {
+            console.warn('Invalid user object found:', user);
+          }
+          return isValid;
+        });
         
         // Fetch all remaining pages if paginated
         if (paginatedData.next) {
@@ -39,8 +57,17 @@ export const usersApi = {
               const pageData = pageResponse.data;
               
               if (pageData.results && Array.isArray(pageData.results)) {
-                allUsers = [...allUsers, ...pageData.results];
-                console.log(`✅ Fetched ${pageData.results.length} users from page ${currentPage}`);
+                // Validate users from this page
+                const validPageUsers = pageData.results.filter((user: any) => {
+                  const isValid = user && typeof user === 'object' && (user.id !== undefined || user.email !== undefined);
+                  if (!isValid) {
+                    console.warn('Invalid user object found on page', currentPage, ':', user);
+                  }
+                  return isValid;
+                });
+                
+                allUsers = [...allUsers, ...validPageUsers];
+                console.log(`✅ Fetched ${validPageUsers.length} valid users from page ${currentPage} (${pageData.results.length} total)`);
                 
                 if (pageData.next) {
                   currentPage++;
@@ -57,12 +84,23 @@ export const usersApi = {
           }
         }
         
-        console.log(`✅ Total users fetched: ${allUsers.length}`);
+        console.log(`✅ Total users fetched and validated: ${allUsers.length}`);
+        if (allUsers.length > 0) {
+          console.log('Sample user structure:', {
+            id: allUsers[0].id,
+            email: allUsers[0].email,
+            name: allUsers[0].name,
+            is_staff: allUsers[0].is_staff,
+            is_superuser: allUsers[0].is_superuser,
+          });
+        }
         return allUsers;
       }
       
-      // If response format is unexpected, return empty array
+      // If response format is unexpected, log it and return empty array
       console.warn('⚠️ Unexpected response format:', response.data);
+      console.warn('Response data type:', typeof response.data);
+      console.warn('Response data keys:', response.data && typeof response.data === 'object' ? Object.keys(response.data) : 'N/A');
       return [];
     } catch (error: any) {
       console.error('❌ Error fetching users:', error);
