@@ -113,55 +113,74 @@ export const alertsApi = {
     kind?: string;
     user?: number; // Optional: if not provided, send to all users
   }): Promise<Alert> => {
-    // Based on Django admin: /admin/notifications/alert/add/
-    // The REST API endpoint should be /api-v1/admin/notifications/alert/ (without /add/)
-    // Try multiple endpoints for creating/sending notifications
+    // Django admin uses /admin/notifications/alert/add/ but that's the admin UI
+    // The REST API might use a different endpoint or format
+    // Try both JSON and FormData formats
+    
     const endpoints = [
-      // API endpoint based on Django admin path (most likely)
-      { client: apiClient, path: '/admin/notifications/alert/' },
-      // Alternative API endpoints
-      { client: apiClient, path: '/admin/notifications/alerts/' },
-      { client: apiClient, path: '/admin/notifications/send/' },
-      { client: apiClient, path: '/admin/notifications/' },
-      { client: apiClient, path: '/admin/alerts/send/' },
-      { client: apiClient, path: '/admin/alerts/' },
-      // Notifications endpoints (outside /api-v1/)
-      { client: notificationsClient, path: '/alert/' },
-      { client: notificationsClient, path: '/alerts/' },
-      { client: notificationsClient, path: '/send/' },
-      { client: notificationsClient, path: '/create/' },
-      // Standard endpoints
-      { client: apiClient, path: '/notifications/alert/' },
-      { client: apiClient, path: '/notifications/alerts/' },
-      { client: apiClient, path: '/notifications/send/' },
-      { client: apiClient, path: '/notifications/' },
-      { client: apiClient, path: '/alerts/send/' },
-      { client: apiClient, path: '/alerts/' },
+      // Try notifications endpoints first (most likely for push notifications)
+      { client: notificationsClient, path: '/send/', useFormData: false },
+      { client: notificationsClient, path: '/alert/', useFormData: false },
+      { client: notificationsClient, path: '/alerts/', useFormData: false },
+      { client: notificationsClient, path: '/create/', useFormData: false },
+      // Try API endpoints
+      { client: apiClient, path: '/admin/notifications/send/', useFormData: false },
+      { client: apiClient, path: '/admin/notifications/alert/', useFormData: false },
+      { client: apiClient, path: '/admin/notifications/alerts/', useFormData: false },
+      { client: apiClient, path: '/admin/alerts/send/', useFormData: false },
+      { client: apiClient, path: '/admin/alerts/', useFormData: false },
+      { client: apiClient, path: '/notifications/send/', useFormData: false },
+      { client: apiClient, path: '/notifications/alert/', useFormData: false },
+      { client: apiClient, path: '/notifications/alerts/', useFormData: false },
+      { client: apiClient, path: '/alerts/send/', useFormData: false },
+      { client: apiClient, path: '/alerts/', useFormData: false },
+      // Try with FormData (like products API)
+      { client: notificationsClient, path: '/send/', useFormData: true },
+      { client: apiClient, path: '/admin/notifications/alert/', useFormData: true },
+      { client: apiClient, path: '/admin/alerts/', useFormData: true },
+      { client: apiClient, path: '/alerts/', useFormData: true },
     ];
 
     let lastError: any = null;
     const triedEndpoints: string[] = [];
 
-    for (const { client, path } of endpoints) {
+    for (const { client, path, useFormData } of endpoints) {
       const fullUrl = `${client.defaults.baseURL}${path}`;
-      triedEndpoints.push(fullUrl);
+      triedEndpoints.push(`${fullUrl} (${useFormData ? 'FormData' : 'JSON'})`);
       
       try {
-        console.log(`Trying to create notification at: ${fullUrl}`);
+        console.log(`Trying to create notification at: ${fullUrl} (${useFormData ? 'FormData' : 'JSON'})`);
         console.log('Request data:', data);
-        const response = await client.post<Alert>(path, data);
+        
+        let requestData: any;
+        let headers: any = {};
+        
+        if (useFormData) {
+          const formData = new FormData();
+          formData.append('title', data.title);
+          formData.append('body', data.body);
+          if (data.kind) formData.append('kind', data.kind);
+          if (data.user) formData.append('user', data.user.toString());
+          requestData = formData;
+          headers['Content-Type'] = 'multipart/form-data';
+        } else {
+          requestData = data;
+        }
+        
+        const response = await client.post<Alert>(path, requestData, { headers });
         console.log(`✅ Successfully created notification at ${fullUrl}`);
         return response.data;
       } catch (error: any) {
         const status = error.response?.status;
         const statusText = error.response?.statusText;
         const errorDetail = error.response?.data?.detail || error.response?.data?.error_message;
+        const allowedMethods = error.response?.headers?.['allow'];
         
         console.log(`❌ Endpoint ${fullUrl} failed:`, {
           status,
           statusText,
           errorDetail,
-          allowedMethods: error.response?.headers?.['allow'],
+          allowedMethods,
         });
         
         lastError = error;
@@ -185,9 +204,12 @@ export const alertsApi = {
     const triedList = triedEndpoints.join('\n- ');
     
     throw new Error(
-      `Failed to create notification. Tried ${triedEndpoints.length} endpoints:\n- ${triedList}\n\n` +
+      `Failed to create notification. Tried ${triedEndpoints.length} endpoint variations:\n- ${triedList}\n\n` +
       `Last error: ${errorMsg}\n` +
-      (allowedMethods ? `Allowed methods: ${allowedMethods}` : '')
+      (allowedMethods ? `Allowed methods: ${allowedMethods}\n` : '') +
+      `\n💡 Note: The REST API endpoint for creating alerts may not exist. ` +
+      `Django admin uses /admin/notifications/alert/add/ which is the admin UI, not the REST API. ` +
+      `You may need to create a REST API endpoint in your Django backend for sending notifications.`
     );
   },
 };
