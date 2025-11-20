@@ -317,8 +317,37 @@ export const REGIONS: string[] = [
   'Western North',
 ];
 
+// Subscription Types
+export interface Subscription {
+  id: number;
+  name: string;
+  tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
+  price: string;
+  duration_days: number;
+  description?: string;
+  features?: string; // JSON string or comma-separated
+  max_ads?: number;
+  max_products?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSubscriptionForm {
+  name: string;
+  tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
+  price: string;
+  duration_days: number;
+  description?: string;
+  features?: string;
+  max_ads?: number;
+  max_products?: number;
+  is_active: boolean;
+}
+
 export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
 export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
 export const USER_LEVELS = ['SILVER', 'GOLD', 'DIAMOND'] as const;
 export const DISCOUNT_TYPES = ['percent', 'fixed'] as const;
+export const SUBSCRIPTION_TIERS = ['BASIC', 'BUSINESS', 'PLATINUM'] as const;
 

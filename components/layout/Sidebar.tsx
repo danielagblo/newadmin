@@ -15,6 +15,7 @@ import {
   Bell,
   Settings,
   Smartphone,
+  CreditCard,
 } from 'lucide-react';
 
 interface NavItem {
@@ -30,6 +31,7 @@ const navigation: NavItem[] = [
   { name: 'Categories', href: '/categories', icon: FolderTree },
   { name: 'Locations', href: '/locations', icon: MapPin },
   { name: 'Coupons', href: '/coupons', icon: Ticket },
+  { name: 'Subscriptions', href: '/subscriptions', icon: CreditCard },
   { name: 'Reviews', href: '/reviews', icon: MessageSquare },
   { name: 'Chat Rooms', href: '/chatrooms', icon: MessageSquare },
   { name: 'Alerts', href: '/alerts', icon: Bell },
