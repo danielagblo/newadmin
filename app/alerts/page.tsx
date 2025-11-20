@@ -4,18 +4,43 @@ import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Select } from '@/components/ui/Select';
 import { alertsApi } from '@/lib/api/alerts';
-import { Alert } from '@/lib/types';
+import { usersApi } from '@/lib/api/users';
+import { Alert, User } from '@/lib/types';
 import { format } from 'date-fns';
+import { Plus, Send } from 'lucide-react';
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [sending, setSending] = useState(false);
+  const [notificationForm, setNotificationForm] = useState({
+    title: '',
+    body: '',
+    kind: '',
+    userId: '' as string | number,
+  });
 
   useEffect(() => {
     fetchAlerts();
+    fetchUsers();
   }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const data = await usersApi.list();
+      setUsers(data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
 
   const fetchAlerts = async () => {
     setLoading(true);
@@ -26,8 +51,45 @@ export default function AlertsPage() {
       setAlerts(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error('Error fetching alerts:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch alerts';
-      setError(errorMessage);
+      console.error('Error response:', error?.response);
+      console.error('Error status:', error?.response?.status);
+      
+      let errorMessage = 'Failed to fetch alerts';
+      let errorDetails = '';
+      
+      if (error?.response?.status === 404) {
+        errorMessage = 'Alerts endpoint not found (404)';
+        errorDetails = `The alerts API endpoint does not exist on your Django backend.\n\n` +
+          `Tried endpoints:\n` +
+          `- /api-v1/admin/alerts/\n` +
+          `- /api-v1/alerts/\n` +
+          `- /notifications/alerts/\n\n` +
+          `Possible solutions:\n` +
+          `1. Check if the alerts endpoint exists in your Django backend\n` +
+          `2. Verify the endpoint path in your Django URLs configuration\n` +
+          `3. The endpoint might be named differently (e.g., /notifications/, /messages/)\n` +
+          `4. Check your Django API documentation at https://api.oysloe.com/api/docs/`;
+      } else if (error?.response?.status === 401) {
+        errorMessage = 'Authentication failed (401)';
+        errorDetails = 'Please log out and log in again.';
+      } else if (error?.response?.status === 403) {
+        errorMessage = 'Access denied (403)';
+        errorDetails = 'You may not have permission to view alerts.';
+      } else if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error')) {
+        errorMessage = 'Network error';
+        errorDetails = 'Cannot connect to the API. Please check your connection.';
+      } else if (error?.response?.data) {
+        errorMessage = 'API Error';
+        errorDetails = error.response.data.detail || 
+                      error.response.data.error_message || 
+                      error.response.data.message ||
+                      JSON.stringify(error.response.data);
+      } else if (error?.message) {
+        errorMessage = 'Error';
+        errorDetails = error.message;
+      }
+      
+      setError(`${errorMessage}\n\n${errorDetails}`);
       setAlerts([]);
     } finally {
       setLoading(false);
@@ -38,8 +100,10 @@ export default function AlertsPage() {
     try {
       await alertsApi.markRead(alert.id);
       fetchAlerts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error marking alert as read:', error);
+      const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to mark alert as read';
+      window.alert(errorMsg);
     }
   };
 
@@ -47,8 +111,10 @@ export default function AlertsPage() {
     try {
       await alertsApi.markAllRead();
       fetchAlerts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error marking all alerts as read:', error);
+      const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to mark all alerts as read';
+      window.alert(errorMsg);
     }
   };
 
@@ -59,6 +125,55 @@ export default function AlertsPage() {
     } catch (error) {
       console.error('Error deleting alert:', error);
       window.alert('Failed to delete alert');
+    }
+  };
+
+  const handleOpenSendModal = () => {
+    setNotificationForm({
+      title: '',
+      body: '',
+      kind: '',
+      userId: '',
+    });
+    setIsSendModalOpen(true);
+  };
+
+  const handleSendNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    try {
+      const alertData: any = {
+        title: notificationForm.title,
+        body: notificationForm.body,
+      };
+
+      if (notificationForm.kind) {
+        alertData.kind = notificationForm.kind;
+      }
+
+      if (notificationForm.userId && notificationForm.userId !== 'all') {
+        alertData.user = parseInt(notificationForm.userId as string);
+      }
+
+      await alertsApi.create(alertData);
+      setIsSendModalOpen(false);
+      setNotificationForm({
+        title: '',
+        body: '',
+        kind: '',
+        userId: '',
+      });
+      fetchAlerts();
+      window.alert('Push notification sent successfully!');
+    } catch (error: any) {
+      console.error('Error sending notification:', error);
+      const errorMsg = error?.response?.data?.detail || 
+                      error?.response?.data?.error_message || 
+                      error?.message || 
+                      'Failed to send notification';
+      window.alert(errorMsg);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -104,10 +219,16 @@ export default function AlertsPage() {
     <Layout>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Alerts</h1>
-          <Button onClick={handleMarkAllRead}>
-            Mark All Read
-          </Button>
+          <h1 className="text-3xl font-bold text-gray-900">Push Notifications</h1>
+          <div className="flex gap-2">
+            <Button onClick={handleOpenSendModal} variant="default">
+              <Plus className="h-4 w-4 mr-2" />
+              Send Notification
+            </Button>
+            <Button onClick={handleMarkAllRead} variant="outline">
+              Mark All Read
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -115,13 +236,26 @@ export default function AlertsPage() {
             <div className="flex items-start">
               <div className="flex-1">
                 <h3 className="text-sm font-medium text-red-800">Error Loading Alerts</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
-                <button
-                  onClick={fetchAlerts}
-                  className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-                >
-                  Try again
-                </button>
+                <div className="mt-2 text-sm text-red-700 whitespace-pre-line space-y-2">
+                  {error.split('\n\n').map((part, idx) => (
+                    <div key={idx} className={idx === 0 ? 'font-semibold' : 'text-xs bg-red-100 p-3 rounded mt-2'}>
+                      {part}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    onClick={fetchAlerts}
+                    className="px-4 py-2 text-sm bg-red-100 text-red-800 rounded hover:bg-red-200 transition w-fit"
+                  >
+                    Try again
+                  </button>
+                  <div className="text-xs text-red-600 space-y-1">
+                    <p>💡 <strong>Check browser console (F12)</strong> to see which endpoints were tried</p>
+                    <p>📚 <strong>Check API docs:</strong> <a href="https://api.oysloe.com/api/docs/" target="_blank" rel="noopener noreferrer" className="underline">https://api.oysloe.com/api/docs/</a></p>
+                    <p>⚠️ <strong>If endpoint doesn't exist:</strong> You may need to create the alerts endpoint in your Django backend</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -151,6 +285,68 @@ export default function AlertsPage() {
             )}
           />
         </div>
+
+        {/* Send Notification Modal */}
+        <Modal
+          isOpen={isSendModalOpen}
+          onClose={() => setIsSendModalOpen(false)}
+          title="Send Push Notification"
+          size="lg"
+        >
+          <form onSubmit={handleSendNotification} className="space-y-4">
+            <Input
+              label="Title"
+              required
+              value={notificationForm.title}
+              onChange={(e) => setNotificationForm({ ...notificationForm, title: e.target.value })}
+              placeholder="Notification title"
+            />
+
+            <Textarea
+              label="Message"
+              required
+              value={notificationForm.body}
+              onChange={(e) => setNotificationForm({ ...notificationForm, body: e.target.value })}
+              placeholder="Notification message/body"
+              rows={4}
+            />
+
+            <Input
+              label="Kind (Optional)"
+              value={notificationForm.kind}
+              onChange={(e) => setNotificationForm({ ...notificationForm, kind: e.target.value })}
+              placeholder="e.g., info, warning, success, error"
+            />
+
+            <Select
+              label="Send To"
+              value={notificationForm.userId}
+              onChange={(e) => setNotificationForm({ ...notificationForm, userId: e.target.value })}
+              options={[
+                { value: 'all', label: 'All Users' },
+                ...users.map((user) => ({
+                  value: user.id.toString(),
+                  label: `${user.name} (${user.email})`,
+                })),
+              ]}
+            />
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsSendModalOpen(false)}
+                disabled={sending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={sending} isLoading={sending}>
+                <Send className="h-4 w-4 mr-2" />
+                Send Notification
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </div>
     </Layout>
   );
