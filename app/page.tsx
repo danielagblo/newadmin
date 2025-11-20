@@ -63,19 +63,59 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         setError(null);
-        const [users, products, chatRooms, alerts, categories] = await Promise.all([
+        const [users, productsResponse, chatRooms, alerts, categories] = await Promise.all([
           usersApi.list().catch(() => []),
-          productsApi.list().catch(() => ({ results: [] })),
+          productsApi.list().catch(() => ({ results: [], count: 0 })),
           chatRoomsApi.list().catch(() => []),
           alertsApi.list().catch(() => []),
           categoriesApi.list().catch(() => []),
         ]);
 
         const usersArray = Array.isArray(users) ? users : [];
-        const productsArray = Array.isArray(products.results) ? products.results : [];
         const chatRoomsArray = Array.isArray(chatRooms) ? chatRooms : [];
         const alertsArray = Array.isArray(alerts) ? alerts : [];
         const categoriesArray = Array.isArray(categories) ? categories : [];
+
+        // Handle products - fetch all pages if paginated
+        let productsArray: Product[] = [];
+        let totalProductsCount = 0;
+        
+        if (Array.isArray(productsResponse)) {
+          // If it's already an array, use it directly
+          productsArray = productsResponse;
+          totalProductsCount = productsResponse.length;
+          console.log('Products: Array response, total:', totalProductsCount);
+        } else {
+          // It's a paginated response
+          totalProductsCount = productsResponse.count || 0;
+          productsArray = productsResponse.results || [];
+          console.log('Products: Paginated response, total count:', totalProductsCount, 'first page:', productsArray.length);
+          
+          // Fetch all pages to get accurate counts for active/pending
+          if (productsResponse.next) {
+            let currentPage = 2;
+            let hasMore = true;
+            const allProducts: Product[] = [...productsArray];
+            
+            while (hasMore && currentPage <= 50) { // Limit to 50 pages to avoid infinite loops
+              try {
+                const nextPage = await productsApi.list({ page: currentPage });
+                if (nextPage.results && nextPage.results.length > 0) {
+                  allProducts.push(...nextPage.results);
+                  hasMore = !!nextPage.next;
+                  currentPage++;
+                } else {
+                  hasMore = false;
+                }
+              } catch (error) {
+                console.error(`Error fetching products page ${currentPage}:`, error);
+                hasMore = false;
+              }
+            }
+            productsArray = allProducts;
+            console.log('Products: Fetched all pages, total products:', productsArray.length);
+          }
+        }
 
         // Calculate basic stats
         const activeProducts = productsArray.filter(
@@ -88,7 +128,7 @@ export default function Dashboard() {
 
         setStats({
           totalUsers: usersArray.length,
-          totalProducts: productsArray.length,
+          totalProducts: totalProductsCount || productsArray.length,
           activeProducts,
           pendingProducts,
           totalChatRooms: chatRoomsArray.length,
