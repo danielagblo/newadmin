@@ -167,11 +167,41 @@ export default function AlertsPage() {
       window.alert('Push notification sent successfully!');
     } catch (error: any) {
       console.error('Error sending notification:', error);
-      const errorMsg = error?.response?.data?.detail || 
-                      error?.response?.data?.error_message || 
-                      error?.message || 
-                      'Failed to send notification';
-      window.alert(errorMsg);
+      console.error('Error response:', error?.response);
+      
+      let errorMsg = 'Failed to send notification';
+      let errorDetails = '';
+      
+      if (error?.response?.status === 405) {
+        errorMsg = 'Method POST not allowed';
+        const allowedMethods = error?.response?.headers?.['allow'];
+        errorDetails = `The endpoint exists but doesn't accept POST requests.\n\n` +
+          `Allowed methods: ${allowedMethods || 'Unknown'}\n\n` +
+          `💡 Tip: Check your browser console (F12) to see which endpoints were tried.\n` +
+          `💡 Tip: Check Django admin network tab to see what endpoint it uses when sending notifications.`;
+      } else if (error?.response?.status === 404) {
+        errorMsg = 'Notification endpoint not found (404)';
+        errorDetails = 'Please check if the endpoint exists in your Django backend.';
+      } else if (error?.response?.status === 401) {
+        errorMsg = 'Authentication failed (401)';
+        errorDetails = 'Please log out and log in again.';
+      } else if (error?.response?.status === 403) {
+        errorMsg = 'Access denied (403)';
+        errorDetails = 'You may not have permission to send notifications.';
+      } else if (error?.response?.data) {
+        errorMsg = 'API Error';
+        errorDetails = error.response.data.detail || 
+                      error.response.data.error_message || 
+                      error.response.data.message ||
+                      JSON.stringify(error.response.data);
+      } else if (error?.message) {
+        errorMsg = 'Error';
+        errorDetails = error.message;
+      }
+      
+      // Show detailed error in alert
+      const fullErrorMsg = errorDetails ? `${errorMsg}\n\n${errorDetails}` : errorMsg;
+      window.alert(fullErrorMsg);
     } finally {
       setSending(false);
     }

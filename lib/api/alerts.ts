@@ -113,31 +113,82 @@ export const alertsApi = {
     kind?: string;
     user?: number; // Optional: if not provided, send to all users
   }): Promise<Alert> => {
-    // Try multiple endpoints for creating alerts
+    // Based on Django admin: /admin/notifications/alert/add/
+    // The REST API endpoint should be /api-v1/admin/notifications/alert/ (without /add/)
+    // Try multiple endpoints for creating/sending notifications
     const endpoints = [
-      '/admin/alerts/',
-      '/alerts/',
+      // API endpoint based on Django admin path (most likely)
+      { client: apiClient, path: '/admin/notifications/alert/' },
+      // Alternative API endpoints
+      { client: apiClient, path: '/admin/notifications/alerts/' },
+      { client: apiClient, path: '/admin/notifications/send/' },
+      { client: apiClient, path: '/admin/notifications/' },
+      { client: apiClient, path: '/admin/alerts/send/' },
+      { client: apiClient, path: '/admin/alerts/' },
+      // Notifications endpoints (outside /api-v1/)
+      { client: notificationsClient, path: '/alert/' },
+      { client: notificationsClient, path: '/alerts/' },
+      { client: notificationsClient, path: '/send/' },
+      { client: notificationsClient, path: '/create/' },
+      // Standard endpoints
+      { client: apiClient, path: '/notifications/alert/' },
+      { client: apiClient, path: '/notifications/alerts/' },
+      { client: apiClient, path: '/notifications/send/' },
+      { client: apiClient, path: '/notifications/' },
+      { client: apiClient, path: '/alerts/send/' },
+      { client: apiClient, path: '/alerts/' },
     ];
 
-    for (const endpoint of endpoints) {
+    let lastError: any = null;
+    const triedEndpoints: string[] = [];
+
+    for (const { client, path } of endpoints) {
+      const fullUrl = `${client.defaults.baseURL}${path}`;
+      triedEndpoints.push(fullUrl);
+      
       try {
-        const response = await apiClient.post<Alert>(endpoint, data);
+        console.log(`Trying to create notification at: ${fullUrl}`);
+        console.log('Request data:', data);
+        const response = await client.post<Alert>(path, data);
+        console.log(`✅ Successfully created notification at ${fullUrl}`);
         return response.data;
       } catch (error: any) {
-        if (error.response?.status === 404) {
+        const status = error.response?.status;
+        const statusText = error.response?.statusText;
+        const errorDetail = error.response?.data?.detail || error.response?.data?.error_message;
+        
+        console.log(`❌ Endpoint ${fullUrl} failed:`, {
+          status,
+          statusText,
+          errorDetail,
+          allowedMethods: error.response?.headers?.['allow'],
+        });
+        
+        lastError = error;
+        
+        // If 405 (Method Not Allowed), try next endpoint
+        if (status === 405 || status === 404) {
           continue;
         }
+        // For other errors (401, 403, etc.), throw immediately
         throw error;
       }
     }
 
-    // Try notifications endpoint
-    try {
-      const response = await notificationsClient.post<Alert>('/alerts/', data);
-      return response.data;
-    } catch (error: any) {
-      throw new Error(`Failed to create alert. Tried multiple endpoints. Error: ${error.response?.status || error.message}`);
-    }
+    // If all endpoints failed, throw a helpful error with all tried endpoints
+    const errorMsg = lastError?.response?.data?.detail || 
+                    lastError?.response?.data?.error_message || 
+                    lastError?.message || 
+                    'Failed to create notification';
+    
+    const allowedMethods = lastError?.response?.headers?.['allow'];
+    const triedList = triedEndpoints.join('\n- ');
+    
+    throw new Error(
+      `Failed to create notification. Tried ${triedEndpoints.length} endpoints:\n- ${triedList}\n\n` +
+      `Last error: ${errorMsg}\n` +
+      (allowedMethods ? `Allowed methods: ${allowedMethods}` : '')
+    );
   },
 };
 
