@@ -492,6 +492,28 @@ export default function AlertsPage() {
                       const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo);
                       const inactiveUsers = users.filter(u => !u.is_active);
                       
+                      // User Level Groups
+                      const diamondUsers = users.filter(u => u.level === 'DIAMOND' && u.is_active);
+                      const goldUsers = users.filter(u => u.level === 'GOLD' && u.is_active);
+                      const silverUsers = users.filter(u => u.level === 'SILVER' && u.is_active);
+                      
+                      // Business Users
+                      const businessUsers = users.filter(u => u.business_name && u.business_name.trim() !== '' && u.is_active);
+                      
+                      // Phone/Email Verified
+                      const phoneVerifiedUsers = users.filter(u => u.phone_verified && u.is_active);
+                      const emailVerifiedUsers = users.filter(u => u.email_verified && u.is_active);
+                      const fullyVerifiedUsers = users.filter(u => u.phone_verified && u.email_verified && u.is_active);
+                      
+                      // Staff/Admin Users
+                      const staffUsers = users.filter(u => (u.is_staff || u.is_superuser) && u.is_active);
+                      
+                      // App Users
+                      const appUsers = users.filter(u => u.created_from_app && u.is_active);
+                      
+                      // Users with Referral Activity
+                      const usersWithReferrals = users.filter(u => u.referral_points > 0 && u.is_active);
+                      
                       const toggleGroup = (groupUserIds: number[]) => {
                         const allSelected = groupUserIds.every(id => notificationForm.userIds.includes(id));
                         if (allSelected) {
@@ -691,6 +713,345 @@ export default function AlertsPage() {
                                     />
                                     <span className="text-sm text-gray-700">
                                       {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* User Level Groups */}
+                          {diamondUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={diamondUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(diamondUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-semibold text-purple-700">
+                                    💎 Diamond Level Users ({diamondUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {diamondUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {goldUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={goldUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(goldUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                                  />
+                                  <span className="text-sm font-semibold text-yellow-700">
+                                    🥇 Gold Level Users ({goldUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {goldUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {silverUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={silverUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(silverUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                                  />
+                                  <span className="text-sm font-semibold text-gray-700">
+                                    🥈 Silver Level Users ({silverUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {silverUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Business Users */}
+                          {businessUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={businessUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(businessUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  <span className="text-sm font-semibold text-indigo-700">
+                                    🏢 Business Users ({businessUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {businessUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.business_name}) - {user.email}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Fully Verified Users */}
+                          {fullyVerifiedUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={fullyVerifiedUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(fullyVerifiedUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                  />
+                                  <span className="text-sm font-semibold text-green-700">
+                                    ✓ Fully Verified (Phone + Email) ({fullyVerifiedUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {fullyVerifiedUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Phone Verified Users */}
+                          {phoneVerifiedUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={phoneVerifiedUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(phoneVerifiedUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                  />
+                                  <span className="text-sm font-semibold text-teal-700">
+                                    📱 Phone Verified Users ({phoneVerifiedUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {phoneVerifiedUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Email Verified Users */}
+                          {emailVerifiedUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={emailVerifiedUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(emailVerifiedUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                  />
+                                  <span className="text-sm font-semibold text-cyan-700">
+                                    ✉️ Email Verified Users ({emailVerifiedUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {emailVerifiedUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Staff/Admin Users */}
+                          {staffUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={staffUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(staffUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                  />
+                                  <span className="text-sm font-semibold text-orange-700">
+                                    👥 Staff/Admin Users ({staffUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {staffUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                      {user.is_superuser && <span className="ml-2 text-xs text-purple-600">Superuser</span>}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* App Users */}
+                          {appUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={appUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(appUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                  />
+                                  <span className="text-sm font-semibold text-pink-700">
+                                    📱 App Users ({appUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {appUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Users with Referrals */}
+                          {usersWithReferrals.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={usersWithReferrals.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(usersWithReferrals.map(u => u.id))}
+                                    className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                  />
+                                  <span className="text-sm font-semibold text-amber-700">
+                                    🎁 Users with Referral Activity ({usersWithReferrals.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {usersWithReferrals.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email}) - {user.referral_points} points
                                     </span>
                                   </label>
                                 ))}
