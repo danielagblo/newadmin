@@ -467,36 +467,199 @@ export default function AlertsPage() {
                 </label>
 
                 {!notificationForm.sendToAll && (
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Select Users (Hold Ctrl/Cmd to select multiple)
-                    </label>
-                    <select
-                      multiple
-                      value={notificationForm.userIds.map(String)}
-                      onChange={(e) => {
-                        const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                        setNotificationForm({
-                          ...notificationForm,
-                          userIds: selected,
-                        });
-                      }}
-                      className="w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent min-h-[150px]"
-                    >
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name} ({user.email})
-                        </option>
-                      ))}
-                    </select>
-                    {notificationForm.userIds.length > 0 && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {notificationForm.userIds.length} user(s) selected: {notificationForm.userIds.map(id => {
-                          const user = users.find(u => u.id === id);
-                          return user?.name || `User ${id}`;
-                        }).join(', ')}
-                      </p>
-                    )}
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto border border-gray-200 rounded-lg p-4">
+                    {(() => {
+                      // Group users by verification status and new users
+                      const now = new Date();
+                      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                      
+                      const verifiedUsers = users.filter(u => u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo);
+                      const unverifiedUsers = users.filter(u => !u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo);
+                      const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo);
+                      const inactiveUsers = users.filter(u => !u.is_active);
+                      
+                      const toggleGroup = (groupUserIds: number[]) => {
+                        const allSelected = groupUserIds.every(id => notificationForm.userIds.includes(id));
+                        if (allSelected) {
+                          // Deselect all in group
+                          setNotificationForm({
+                            ...notificationForm,
+                            userIds: notificationForm.userIds.filter(id => !groupUserIds.includes(id)),
+                          });
+                        } else {
+                          // Select all in group
+                          setNotificationForm({
+                            ...notificationForm,
+                            userIds: [...new Set([...notificationForm.userIds, ...groupUserIds])],
+                          });
+                        }
+                      };
+                      
+                      const toggleUser = (userId: number) => {
+                        if (notificationForm.userIds.includes(userId)) {
+                          setNotificationForm({
+                            ...notificationForm,
+                            userIds: notificationForm.userIds.filter(id => id !== userId),
+                          });
+                        } else {
+                          setNotificationForm({
+                            ...notificationForm,
+                            userIds: [...notificationForm.userIds, userId],
+                          });
+                        }
+                      };
+                      
+                      return (
+                        <>
+                          {/* Verified Users */}
+                          {verifiedUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={verifiedUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(verifiedUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span className="text-sm font-semibold text-gray-700">
+                                    Verified Users ({verifiedUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {verifiedUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Unverified Users */}
+                          {unverifiedUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={unverifiedUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(unverifiedUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span className="text-sm font-semibold text-gray-700">
+                                    Unverified Users ({unverifiedUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {unverifiedUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* New Users */}
+                          {newUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={newUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(newUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                  />
+                                  <span className="text-sm font-semibold text-green-700">
+                                    New Users (Last 30 days) ({newUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {newUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                      {user.admin_verified && (
+                                        <span className="ml-2 text-xs text-blue-600">✓ Verified</span>
+                                      )}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Inactive Users */}
+                          {inactiveUsers.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={inactiveUsers.every(u => notificationForm.userIds.includes(u.id))}
+                                    onChange={() => toggleGroup(inactiveUsers.map(u => u.id))}
+                                    className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                  />
+                                  <span className="text-sm font-semibold text-red-700">
+                                    Inactive Users ({inactiveUsers.length})
+                                  </span>
+                                </label>
+                              </div>
+                              <div className="pl-6 space-y-1">
+                                {inactiveUsers.map((user) => (
+                                  <label key={user.id} className="flex items-center space-x-2 py-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={notificationForm.userIds.includes(user.id)}
+                                      onChange={() => toggleUser(user.id)}
+                                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {user.name} ({user.email})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {notificationForm.userIds.length > 0 && (
+                            <div className="pt-2 border-t border-gray-200">
+                              <p className="text-sm font-medium text-gray-700">
+                                {notificationForm.userIds.length} user(s) selected
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
