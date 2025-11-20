@@ -92,7 +92,8 @@ export default function Dashboard() {
           console.log('Products: Paginated response, total count:', totalProductsCount, 'first page:', productsArray.length);
           
           // Fetch all pages to get accurate counts for active/pending
-          if (productsResponse.next) {
+          // Check if it has 'next' property (PaginatedResponse) before accessing
+          if ('next' in productsResponse && productsResponse.next) {
             let currentPage = 2;
             let hasMore = true;
             const allProducts: Product[] = [...productsArray];
