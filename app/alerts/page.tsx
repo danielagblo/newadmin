@@ -59,9 +59,14 @@ export default function AlertsPage() {
       setAlerts(alertsArray);
       
       if (alertsArray.length === 0) {
-        console.warn('No alerts found. If you added alerts in Django admin, check if the endpoint is correct.');
+        console.warn('⚠️ No alerts found. If you added alerts in Django admin, they might not be showing because:');
+        console.warn('1. The endpoint is returning filtered results (only current user\'s alerts)');
+        console.warn('2. The endpoint path is incorrect');
+        console.warn('3. The alerts need to be fetched from a different endpoint');
+        console.warn('Check the browser console to see which endpoint was successfully used.');
       } else {
         console.log(`✅ Loaded ${alertsArray.length} alerts. Sample:`, alertsArray.slice(0, 3));
+        console.log('If you see fewer alerts than in Django admin, the endpoint might be filtering by user.');
       }
     } catch (error: any) {
       console.error('Error fetching alerts:', error);
@@ -191,8 +196,11 @@ export default function AlertsPage() {
         const allowedMethods = error?.response?.headers?.['allow'];
         errorDetails = `The endpoint exists but doesn't accept POST requests.\n\n` +
           `Allowed methods: ${allowedMethods || 'Unknown'}\n\n` +
-          `💡 Tip: Check your browser console (F12) to see which endpoints were tried.\n` +
-          `💡 Tip: Check Django admin network tab to see what endpoint it uses when sending notifications.`;
+          `⚠️ The REST API endpoint for creating alerts may not exist in your Django backend.\n` +
+          `Django admin uses /admin/notifications/alert/add/ which is the admin UI, not the REST API.\n\n` +
+          `💡 Solution: You need to create a REST API endpoint in your Django backend for sending notifications.\n` +
+          `   Suggested endpoint: POST /api-v1/admin/notifications/alert/ or POST /api-v1/alerts/\n\n` +
+          `💡 For now, you can create notifications using Django admin, and they will appear in this panel.`;
       } else if (error?.response?.status === 404) {
         errorMsg = 'Notification endpoint not found (404)';
         errorDetails = 'Please check if the endpoint exists in your Django backend.';
@@ -308,6 +316,21 @@ export default function AlertsPage() {
           </div>
         </div>
 
+        {/* Info banner if alerts are loading successfully but create might not work */}
+        {!error && alerts.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <div className="flex-1">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> If the "Send Notification" button doesn&apos;t work, 
+                  the REST API endpoint for creating alerts may not exist. 
+                  You can create notifications in Django admin and they will appear here.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-start">
@@ -340,8 +363,15 @@ export default function AlertsPage() {
 
         <div className="bg-white rounded-lg shadow p-6">
           {!error && (
-            <div className="mb-4 text-sm text-gray-600">
-              Total alerts: {alerts.length} | Unread: {alerts.filter(a => !a.is_read).length}
+            <div className="mb-4 flex justify-between items-center">
+              <div className="text-sm text-gray-600">
+                Total alerts: {alerts.length} | Unread: {alerts.filter(a => !a.is_read).length}
+              </div>
+              {alerts.length === 0 && (
+                <div className="text-xs text-gray-500">
+                  💡 Check browser console (F12) to see which endpoint was used
+                </div>
+              )}
             </div>
           )}
           <DataTable
