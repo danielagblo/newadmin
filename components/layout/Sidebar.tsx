@@ -16,6 +16,7 @@ import {
   Settings,
   Smartphone,
   CreditCard,
+  Shield,
 } from 'lucide-react';
 
 interface NavItem {
@@ -27,6 +28,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Users', href: '/users', icon: Users },
+  { name: 'Admin Users', href: '/admin-users', icon: Shield },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'Categories', href: '/categories', icon: FolderTree },
   { name: 'Locations', href: '/locations', icon: MapPin },
