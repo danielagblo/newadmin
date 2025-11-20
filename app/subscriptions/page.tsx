@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { subscriptionsApi } from '@/lib/api/subscriptions';
 import { Subscription, SUBSCRIPTION_TIERS } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Crown, Briefcase, Sparkles } from 'lucide-react';
+import { Plus, Crown, Briefcase, Sparkles, Check } from 'lucide-react';
 
 export default function SubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -23,6 +23,9 @@ export default function SubscriptionsPage() {
     name: string;
     tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
     price: string;
+    original_price: string;
+    multiplier: string;
+    discount_percentage: number;
     duration_days: number;
     description: string;
     features: string;
@@ -33,6 +36,9 @@ export default function SubscriptionsPage() {
     name: '',
     tier: 'BASIC',
     price: '',
+    original_price: '',
+    multiplier: '',
+    discount_percentage: 0,
     duration_days: 30,
     description: '',
     features: '',
@@ -67,6 +73,9 @@ export default function SubscriptionsPage() {
       name: '',
       tier: 'BASIC',
       price: '',
+      original_price: '',
+      multiplier: '',
+      discount_percentage: 0,
       duration_days: 30,
       description: '',
       features: '',
@@ -83,6 +92,9 @@ export default function SubscriptionsPage() {
       name: subscription.name,
       tier: subscription.tier,
       price: subscription.price,
+      original_price: subscription.original_price || '',
+      multiplier: subscription.multiplier || '',
+      discount_percentage: subscription.discount_percentage || 0,
       duration_days: subscription.duration_days,
       description: subscription.description || '',
       features: subscription.features || '',
@@ -111,6 +123,9 @@ export default function SubscriptionsPage() {
     try {
       const submitData = {
         ...formData,
+        original_price: formData.original_price || undefined,
+        multiplier: formData.multiplier || undefined,
+        discount_percentage: formData.discount_percentage || undefined,
         max_ads: formData.max_ads || undefined,
         max_products: formData.max_products || undefined,
         features: formData.features || undefined,
@@ -149,17 +164,32 @@ export default function SubscriptionsPage() {
         const config = tierConfig[sub.tier];
         const Icon = config.icon;
         return (
-          <span className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${config.color}`}>
-            <Icon className="h-3 w-3" />
-            {sub.tier}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${config.color}`}>
+              <Icon className="h-3 w-3" />
+              {sub.tier}
+            </span>
+            {sub.multiplier && (
+              <span className="text-xs text-gray-500">{sub.multiplier}</span>
+            )}
+          </div>
         );
       },
     },
     {
       key: 'price',
       header: 'Price',
-      render: (sub: Subscription) => `₵${parseFloat(sub.price).toLocaleString()}`,
+      render: (sub: Subscription) => (
+        <div className="flex items-baseline gap-2">
+          <span className="font-semibold">₵{parseFloat(sub.price).toLocaleString()}</span>
+          {sub.original_price && (
+            <span className="text-xs text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+          )}
+          {sub.discount_percentage && (
+            <span className="text-xs text-green-600 font-semibold">{sub.discount_percentage}% off</span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'duration_days',
@@ -222,28 +252,47 @@ export default function SubscriptionsPage() {
           </div>
         )}
 
-        {/* Three Tiers Display */}
+        {/* Three Tiers Display - Matching Mobile App Design */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Basic Tier */}
-          <div className="bg-white rounded-lg shadow-lg border-2 border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-lg border-2 border-gray-300 p-6 relative">
+            {basicSubscriptions.some(s => s.discount_percentage && s.discount_percentage > 0) && (
+              <div className="absolute top-2 right-2 bg-gray-800 text-white px-2 py-1 text-xs font-semibold rounded">
+                For you {basicSubscriptions.find(s => s.discount_percentage && s.discount_percentage > 0)?.discount_percentage}% off
+              </div>
+            )}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-6 w-6 text-gray-600" />
                 <h3 className="text-xl font-bold text-gray-900">Basic</h3>
               </div>
             </div>
-            <div className="space-y-2 mb-4">
+            <div className="space-y-4 mb-4">
               {basicSubscriptions.length > 0 ? (
-                basicSubscriptions.map((sub) => (
-                  <div key={sub.id} className="border-b border-gray-200 pb-2 last:border-0">
-                    <div className="font-semibold text-gray-900">{sub.name}</div>
-                    <div className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</div>
-                    <div className="text-sm text-gray-600">{sub.duration_days} days</div>
-                    {sub.description && (
-                      <div className="text-xs text-gray-500 mt-1">{sub.description}</div>
-                    )}
-                  </div>
-                ))
+                basicSubscriptions.map((sub) => {
+                  const features = sub.features ? sub.features.split(',').map(f => f.trim()) : [];
+                  return (
+                    <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
+                      <div className="font-semibold text-gray-900 mb-2">{sub.name}</div>
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <span className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</span>
+                        {sub.original_price && (
+                          <span className="text-sm text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+                        )}
+                      </div>
+                      {features.length > 0 && (
+                        <div className="space-y-1 mt-3">
+                          {features.map((feature, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                              <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                              <span>{feature}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-sm text-gray-500">No Basic subscriptions</p>
               )}
@@ -261,18 +310,39 @@ export default function SubscriptionsPage() {
                 <h3 className="text-xl font-bold text-gray-900">Business</h3>
               </div>
             </div>
-            <div className="space-y-2 mb-4">
+            <div className="space-y-4 mb-4">
               {businessSubscriptions.length > 0 ? (
-                businessSubscriptions.map((sub) => (
-                  <div key={sub.id} className="border-b border-gray-200 pb-2 last:border-0">
-                    <div className="font-semibold text-gray-900">{sub.name}</div>
-                    <div className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</div>
-                    <div className="text-sm text-gray-600">{sub.duration_days} days</div>
-                    {sub.description && (
-                      <div className="text-xs text-gray-500 mt-1">{sub.description}</div>
-                    )}
-                  </div>
-                ))
+                businessSubscriptions.map((sub) => {
+                  const features = sub.features ? sub.features.split(',').map(f => f.trim()) : [];
+                  return (
+                    <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold text-gray-900">{sub.name}</div>
+                        {sub.multiplier && (
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                            {sub.multiplier}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <span className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</span>
+                        {sub.original_price && (
+                          <span className="text-sm text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+                        )}
+                      </div>
+                      {features.length > 0 && (
+                        <div className="space-y-1 mt-3">
+                          {features.map((feature, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                              <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                              <span>{feature}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-sm text-gray-500">No Business subscriptions</p>
               )}
@@ -287,18 +357,39 @@ export default function SubscriptionsPage() {
                 <h3 className="text-xl font-bold text-gray-900">Platinum</h3>
               </div>
             </div>
-            <div className="space-y-2 mb-4">
+            <div className="space-y-4 mb-4">
               {platinumSubscriptions.length > 0 ? (
-                platinumSubscriptions.map((sub) => (
-                  <div key={sub.id} className="border-b border-gray-200 pb-2 last:border-0">
-                    <div className="font-semibold text-gray-900">{sub.name}</div>
-                    <div className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</div>
-                    <div className="text-sm text-gray-600">{sub.duration_days} days</div>
-                    {sub.description && (
-                      <div className="text-xs text-gray-500 mt-1">{sub.description}</div>
-                    )}
-                  </div>
-                ))
+                platinumSubscriptions.map((sub) => {
+                  const features = sub.features ? sub.features.split(',').map(f => f.trim()) : [];
+                  return (
+                    <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold text-gray-900">{sub.name}</div>
+                        {sub.multiplier && (
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                            {sub.multiplier}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <span className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</span>
+                        {sub.original_price && (
+                          <span className="text-sm text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+                        )}
+                      </div>
+                      {features.length > 0 && (
+                        <div className="space-y-1 mt-3">
+                          {features.map((feature, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                              <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                              <span>{feature}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-sm text-gray-500">No Platinum subscriptions</p>
               )}
@@ -346,15 +437,43 @@ export default function SubscriptionsPage() {
               options={SUBSCRIPTION_TIERS.map(tier => ({ value: tier, label: tier }))}
             />
 
-            <Input
-              label="Price (GHS)"
-              type="number"
-              step="0.01"
-              required
-              value={formData.price}
-              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-              placeholder="0.00"
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Price (GHS)"
+                type="number"
+                step="0.01"
+                required
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                placeholder="0.00"
+              />
+              <Input
+                label="Original Price (GHS) - for strikethrough"
+                type="number"
+                step="0.01"
+                value={formData.original_price}
+                onChange={(e) => setFormData({ ...formData, original_price: e.target.value })}
+                placeholder="0.00"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Multiplier (e.g., 1.5x, 4x, 10x)"
+                value={formData.multiplier}
+                onChange={(e) => setFormData({ ...formData, multiplier: e.target.value })}
+                placeholder="1.5x"
+              />
+              <Input
+                label="Discount Percentage"
+                type="number"
+                min="0"
+                max="100"
+                value={formData.discount_percentage}
+                onChange={(e) => setFormData({ ...formData, discount_percentage: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+              />
+            </div>
 
             <Input
               label="Duration (Days)"

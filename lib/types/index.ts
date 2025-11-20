@@ -323,6 +323,9 @@ export interface Subscription {
   name: string;
   tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
   price: string;
+  original_price?: string; // For showing strikethrough price
+  multiplier?: string; // e.g., "1.5x", "4x", "10x"
+  discount_percentage?: number; // e.g., 50 for 50% off
   duration_days: number;
   description?: string;
   features?: string; // JSON string or comma-separated
@@ -337,6 +340,9 @@ export interface CreateSubscriptionForm {
   name: string;
   tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
   price: string;
+  original_price?: string;
+  multiplier?: string;
+  discount_percentage?: number;
   duration_days: number;
   description?: string;
   features?: string;
