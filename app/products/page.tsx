@@ -267,11 +267,21 @@ export default function ProductsPage() {
       let updatedProduct: Product;
       
       if (status === 'TAKEN') {
-        // For TAKEN status, mark as taken and update status via update endpoint
-        // First mark as taken
-        await productsApi.markAsTaken(product.id);
-        // Then update the status field using the update endpoint
-        updatedProduct = await productsApi.update(product.id, { status: 'TAKEN' });
+        // For TAKEN status, use setStatus endpoint first
+        try {
+          updatedProduct = await productsApi.setStatus(product.id, status);
+          // If setStatus succeeds but doesn't mark as taken, also call markAsTaken
+          if (!updatedProduct.is_taken) {
+            await productsApi.markAsTaken(product.id);
+            // Refetch to get updated product
+            updatedProduct = await productsApi.get(product.id);
+          }
+        } catch (setStatusError: any) {
+          // If setStatus doesn't accept TAKEN, mark as taken and use update endpoint
+          console.warn('setStatus failed for TAKEN, using markAsTaken + update:', setStatusError);
+          await productsApi.markAsTaken(product.id);
+          updatedProduct = await productsApi.update(product.id, { status: 'TAKEN' });
+        }
       } else {
         // For other statuses, use setStatus endpoint
         updatedProduct = await productsApi.setStatus(product.id, status);
