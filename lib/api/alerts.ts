@@ -1,6 +1,6 @@
-import apiClient from './config';
 import axios from 'axios';
 import { Alert } from '../types';
+import apiClient from './config';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -37,15 +37,7 @@ export const alertsApi = {
     // Try multiple possible endpoint paths based on Django backend structure
     
     const endpoints = [
-      // Admin endpoints first (to get ALL alerts, not filtered by user)
-      '/admin/notifications/alert/',
-      '/admin/notifications/alerts/',
-      '/admin/alerts/',
-      '/admin/notifications/',
-      // Standard endpoints (might be filtered by user)
-      '/alerts/',
-      '/notifications/alert/',
-      '/notifications/alerts/',
+      '/alerts/'
     ];
 
     // Try api-v1 endpoints first
@@ -140,8 +132,26 @@ export const alertsApi = {
 
   markRead: async (id: number): Promise<{ status: string }> => {
     // POST /api-v1/alerts/{id}/mark-read/
-    const response = await apiClient.post<{ status: string }>(`/alerts/${id}/mark-read/`);
-    return response.data;
+    try {
+      const response = await apiClient.post<{ status?: string }>(`/alerts/${id}/mark-read/`);
+
+      // Some backends return 204 No Content for mark-read endpoints
+      if (response.status === 204) {
+        return { status: 'ok' };
+      }
+
+      // If the response contains a body, return it (best-effort)
+      if (response.data && typeof response.data === 'object') {
+        return response.data as { status: string };
+      }
+
+      // Fallback
+      return { status: 'ok' };
+    } catch (error: any) {
+      console.error(`Failed to mark alert ${id} as read:`, error.response?.status, error.response?.data || error.message);
+      const errMsg = error.response?.data?.detail || error.response?.data || error.message || 'Unknown error';
+      throw new Error(`Could not mark alert ${id} as read: ${errMsg}`);
+    }
   },
 
   delete: async (id: number): Promise<{ status: string }> => {
@@ -156,104 +166,60 @@ export const alertsApi = {
     kind?: string;
     user?: number; // Optional: if not provided, send to all users
   }): Promise<Alert> => {
-    // Django admin uses /admin/notifications/alert/add/ but that's the admin UI
-    // The REST API might use a different endpoint or format
-    // Try both JSON and FormData formats
-    
-    const endpoints = [
-      // Try notifications endpoints first (most likely for push notifications)
-      { client: notificationsClient, path: '/send/', useFormData: false },
-      { client: notificationsClient, path: '/alert/', useFormData: false },
-      { client: notificationsClient, path: '/alerts/', useFormData: false },
-      { client: notificationsClient, path: '/create/', useFormData: false },
-      // Try API endpoints
-      { client: apiClient, path: '/admin/notifications/send/', useFormData: false },
-      { client: apiClient, path: '/admin/notifications/alert/', useFormData: false },
-      { client: apiClient, path: '/admin/notifications/alerts/', useFormData: false },
-      { client: apiClient, path: '/admin/alerts/send/', useFormData: false },
-      { client: apiClient, path: '/admin/alerts/', useFormData: false },
-      { client: apiClient, path: '/notifications/send/', useFormData: false },
-      { client: apiClient, path: '/notifications/alert/', useFormData: false },
-      { client: apiClient, path: '/notifications/alerts/', useFormData: false },
-      { client: apiClient, path: '/alerts/send/', useFormData: false },
-      { client: apiClient, path: '/alerts/', useFormData: false },
-      // Try with FormData (like products API)
-      { client: notificationsClient, path: '/send/', useFormData: true },
-      { client: apiClient, path: '/admin/notifications/alert/', useFormData: true },
-      { client: apiClient, path: '/admin/alerts/', useFormData: true },
-      { client: apiClient, path: '/alerts/', useFormData: true },
-    ];
+    // Try to create an alert using POST to common endpoints.
+    // Prefer the API client base (`/api-v1/...`) then fall back to `/notifications/alerts/`.
+    const payload: any = {
+      title: data.title,
+      body: data.body,
+    };
+    if (data.kind) payload.kind = data.kind;
+    if (typeof data.user !== 'undefined') payload.user = data.user;
 
-    let lastError: any = null;
-    const triedEndpoints: string[] = [];
-
-    for (const { client, path, useFormData } of endpoints) {
-      const fullUrl = `${client.defaults.baseURL}${path}`;
-      triedEndpoints.push(`${fullUrl} (${useFormData ? 'FormData' : 'JSON'})`);
-      
-      try {
-        console.log(`Trying to create notification at: ${fullUrl} (${useFormData ? 'FormData' : 'JSON'})`);
-        console.log('Request data:', data);
-        
-        let requestData: any;
-        let headers: any = {};
-        
-        if (useFormData) {
-          const formData = new FormData();
-          formData.append('title', data.title);
-          formData.append('body', data.body);
-          if (data.kind) formData.append('kind', data.kind);
-          if (data.user) formData.append('user', data.user.toString());
-          requestData = formData;
-          headers['Content-Type'] = 'multipart/form-data';
-        } else {
-          requestData = data;
+    const tryEndpoints = async () => {
+      // If the backend uses `/alerts/{id}/mark-read/` as the push endpoint,
+      // try that first when a `user` (id) is provided.
+      if (typeof data.user !== 'undefined') {
+        const markReadEndpoint = `/alerts/${data.user}/mark-read/`;
+        try {
+          console.log(`Trying create via mark-read endpoint POST ${apiClient.defaults.baseURL}${markReadEndpoint}`, payload);
+          const resp = await apiClient.post<Alert>(markReadEndpoint, payload);
+          console.log(`✅ Created alert via ${markReadEndpoint}`);
+          return resp.data;
+        } catch (err: any) {
+          console.warn(`Failed POST ${markReadEndpoint}:`, err.response?.status);
+          // fall through to other attempts
         }
-        
-        const response = await client.post<Alert>(path, requestData, { headers });
-        console.log(`✅ Successfully created notification at ${fullUrl}`);
-        return response.data;
-      } catch (error: any) {
-        const status = error.response?.status;
-        const statusText = error.response?.statusText;
-        const errorDetail = error.response?.data?.detail || error.response?.data?.error_message;
-        const allowedMethods = error.response?.headers?.['allow'];
-        
-        console.log(`❌ Endpoint ${fullUrl} failed:`, {
-          status,
-          statusText,
-          errorDetail,
-          allowedMethods,
-        });
-        
-        lastError = error;
-        
-        // If 405 (Method Not Allowed), try next endpoint
-        if (status === 405 || status === 404) {
-          continue;
-        }
-        // For other errors (401, 403, etc.), throw immediately
-        throw error;
       }
-    }
 
-    // If all endpoints failed, throw a helpful error with all tried endpoints
-    const errorMsg = lastError?.response?.data?.detail || 
-                    lastError?.response?.data?.error_message || 
-                    lastError?.message || 
-                    'Failed to create notification';
-    
-    const allowedMethods = lastError?.response?.headers?.['allow'];
-    const triedList = triedEndpoints.join('\n- ');
-    
-    throw new Error(
-      `Failed to create notification. Tried ${triedEndpoints.length} endpoint variations:\n- ${triedList}\n\n` +
-      `Last error: ${errorMsg}\n` +
-      (allowedMethods ? `Allowed methods: ${allowedMethods}\n` : '') +
-      `\n💡 Note: The REST API endpoint for creating alerts may not exist. ` +
-      `Django admin uses /admin/notifications/alert/add/ which is the admin UI, not the REST API. ` +
-      `You may need to create a REST API endpoint in your Django backend for sending notifications.`
-    );
+      const endpoints = ['/alerts/', '/admin/notifications/alert/'];
+
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`Trying to create alert via POST ${apiClient.defaults.baseURL}${endpoint}`, payload);
+          const resp = await apiClient.post<Alert>(endpoint, payload);
+          console.log(`✅ Created alert via ${endpoint}`);
+          return resp.data;
+        } catch (err: any) {
+          console.warn(`Failed POST ${endpoint}:`, err.response?.status);
+          // continue to next endpoint for 404 or 405
+          if (err.response && [404, 405].includes(err.response.status)) continue;
+          throw err;
+        }
+      }
+
+      // Fallback to notificationsClient (/notifications/alerts/)
+      try {
+        console.log(`Trying fallback notifications endpoint: ${notificationsClient.defaults.baseURL}/alerts/`, payload);
+        const resp = await notificationsClient.post<Alert>('/alerts/', payload);
+        console.log('✅ Created alert via /notifications/alerts/');
+        return resp.data;
+      } catch (err: any) {
+        console.error('All create alert endpoints failed:', err.response?.status, err.response?.data || err.message);
+        throw err;
+      }
+    };
+
+    return await tryEndpoints();
   },
 };
 

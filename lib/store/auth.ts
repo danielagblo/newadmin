@@ -11,16 +11,14 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: typeof window !== 'undefined' ? (() => {
-    try {
-      const stored = localStorage.getItem('user');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  })() : null,
-  token: typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null,
-  isAuthenticated: typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : false,
+  // Do NOT access `localStorage` here. Reading `localStorage` during
+  // initialization causes the store to have different initial values
+  // on the server vs the client which leads to hydration mismatches.
+  // The `Layout` component reads from localStorage in a `useEffect`
+  // and calls `setAuth` after mount to populate the store.
+  user: null,
+  token: null,
+  isAuthenticated: false,
   setAuth: (user, token) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
