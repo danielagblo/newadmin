@@ -257,21 +257,21 @@ export default function ProductsPage() {
 
   const handleSetStatus = async (product: Product, status: string) => {
     try {
-      // If setting status to TAKEN, also mark as taken
-      // If setting status to something else and product was taken, mark as not taken
+      let updatedProduct: Product;
+      
       if (status === 'TAKEN') {
-        // First mark as taken, then set status
+        // For TAKEN status, mark as taken and update status via update endpoint
+        // First mark as taken
         await productsApi.markAsTaken(product.id);
-        await productsApi.setStatus(product.id, status);
-      } else if (product.is_taken && status !== 'TAKEN') {
-        // If product was taken and we're changing to a different status, we need to handle this
-        // The API might need a way to unmark as taken, or we just set the status
-        await productsApi.setStatus(product.id, status);
+        // Then update the status field using the update endpoint
+        updatedProduct = await productsApi.update(product.id, { status: 'TAKEN' });
       } else {
-        await productsApi.setStatus(product.id, status);
+        // For other statuses, use setStatus endpoint
+        updatedProduct = await productsApi.setStatus(product.id, status);
       }
       
-      const updatedProduct = await productsApi.get(product.id);
+      // Refresh the product list
+      await fetchProducts();
       
       // Switch to the appropriate tab based on status
       if (status === 'TAKEN' || updatedProduct.is_taken) {
@@ -281,8 +281,10 @@ export default function ProductsPage() {
         setStatusFilter(status);
       }
       setCurrentPage(1);
-    } catch (error) {
+      setOpenDropdown(null);
+    } catch (error: any) {
       console.error('Error updating status:', error);
+      window.alert(error?.response?.data?.detail || 'Failed to update status');
     }
   };
 
