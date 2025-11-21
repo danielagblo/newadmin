@@ -476,7 +476,6 @@ export default function ProductsPage() {
               {statusFilter && (
                 <span className="inline-block mr-2">
                   Showing: <span className="font-medium">{statusFilter} Products</span>
-                  {statusFilter !== 'TAKEN' && <span className="text-gray-500"> (excluding taken)</span>}
                 </span>
               )}
               {!statusFilter && (
