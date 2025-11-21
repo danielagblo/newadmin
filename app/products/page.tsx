@@ -34,7 +34,6 @@ export default function ProductsPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null); // null = all, or specific status
-  const [takenFilter, setTakenFilter] = useState<boolean | null>(null); // null = all, true = taken, false = not taken
   const [formData, setFormData] = useState<{
     name: string;
     category: string;
@@ -70,7 +69,7 @@ export default function ProductsPage() {
       
       const data = await productsApi.list(params);
       console.log('Products fetched:', data);
-      console.log('Current filters - statusFilter:', statusFilter, 'takenFilter:', takenFilter);
+      console.log('Current filters - statusFilter:', statusFilter);
       
       let allProducts: Product[] = [];
       if (Array.isArray(data)) {
@@ -84,27 +83,17 @@ export default function ProductsPage() {
       // STRICT Client-side filtering - filter to show ONLY matching products
       let filteredProducts = allProducts;
       
-      if (takenFilter !== null && takenFilter === true) {
-        // "Taken" tab: Show ONLY taken products (regardless of status)
-        filteredProducts = allProducts.filter(p => p.is_taken === true);
-        console.log('Filtered to taken products:', filteredProducts.length);
-      } else if (statusFilter) {
+      if (statusFilter) {
         if (statusFilter === 'TAKEN') {
           // "TAKEN" status tab: Show products with TAKEN status OR is_taken=true
           filteredProducts = allProducts.filter(p => p.status === 'TAKEN' || p.is_taken === true);
-          console.log('Filtered to TAKEN status products:', filteredProducts.length);
         } else {
           // Other status tabs: Show ONLY products with EXACT status match AND not taken
           filteredProducts = allProducts.filter(p => {
             const statusMatch = p.status === statusFilter;
             const notTaken = p.is_taken === false;
-            const matches = statusMatch && notTaken;
-            if (!matches && statusMatch) {
-              console.log(`Product ${p.id} has status ${p.status} but is_taken=${p.is_taken}, excluding`);
-            }
-            return matches;
+            return statusMatch && notTaken;
           });
-          console.log(`Filtered to ${statusFilter} products (not taken):`, filteredProducts.length);
         }
       }
       // "All" tab: No filtering, shows everything
@@ -122,7 +111,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, statusFilter, takenFilter]);
+  }, [currentPage, searchTerm, statusFilter]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -255,11 +244,9 @@ export default function ProductsPage() {
       // Otherwise, show in the status tab that matches the product's status
       if (updatedProduct.status === 'TAKEN' || updatedProduct.is_taken) {
         setStatusFilter('TAKEN');
-        setTakenFilter(null);
         setCurrentPage(1);
       } else {
         setStatusFilter(updatedProduct.status);
-        setTakenFilter(null);
         setCurrentPage(1);
       }
     } catch (error: any) {
@@ -287,17 +274,11 @@ export default function ProductsPage() {
       const updatedProduct = await productsApi.get(product.id);
       
       // Switch to the appropriate tab based on status
-      if (status === 'TAKEN') {
+      if (status === 'TAKEN' || updatedProduct.is_taken) {
         setStatusFilter('TAKEN');
-        setTakenFilter(null);
-      } else if (updatedProduct.is_taken) {
-        // If still taken but status changed, show in TAKEN status tab
-        setStatusFilter('TAKEN');
-        setTakenFilter(null);
       } else {
         // Switch to the status tab that matches the updated status
         setStatusFilter(status);
-        setTakenFilter(null);
       }
       setCurrentPage(1);
     } catch (error) {
@@ -473,18 +454,13 @@ export default function ProductsPage() {
         <div className="bg-white rounded-lg shadow p-6">
           {!error && (
             <div className="mb-4 text-sm text-gray-600">
-              {takenFilter === true && (
-                <span className="inline-block mr-2">
-                  Showing: <span className="font-medium">Taken Products</span>
-                </span>
-              )}
-              {statusFilter && takenFilter === null && (
+              {statusFilter && (
                 <span className="inline-block mr-2">
                   Showing: <span className="font-medium">{statusFilter} Products</span>
                   {statusFilter !== 'TAKEN' && <span className="text-gray-500"> (excluding taken)</span>}
                 </span>
               )}
-              {!statusFilter && takenFilter === null && (
+              {!statusFilter && (
                 <span className="inline-block mr-2">Showing: <span className="font-medium">All Products</span></span>
               )}
               | Total: {totalItems} | Page {currentPage} of {totalPages}
@@ -497,11 +473,10 @@ export default function ProductsPage() {
               <button
                 onClick={() => {
                   setStatusFilter(null);
-                  setTakenFilter(null);
                   setCurrentPage(1);
                 }}
                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  statusFilter === null && takenFilter === null
+                  statusFilter === null
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
@@ -513,11 +488,10 @@ export default function ProductsPage() {
                   key={status}
                   onClick={() => {
                     setStatusFilter(status);
-                    setTakenFilter(null);
                     setCurrentPage(1);
                   }}
                   className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                    statusFilter === status && takenFilter === null
+                    statusFilter === status
                       ? 'border-primary-500 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
@@ -525,20 +499,6 @@ export default function ProductsPage() {
                   {status}
                 </button>
               ))}
-              <button
-                onClick={() => {
-                  setStatusFilter(null);
-                  setTakenFilter(true);
-                  setCurrentPage(1);
-                }}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  takenFilter === true
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Taken
-              </button>
             </nav>
           </div>
 
@@ -613,26 +573,6 @@ export default function ProductsPage() {
                             className="w-full text-sm"
                           />
                         </div>
-                        {!product.is_taken && (
-                          <>
-                            <div className="border-t border-gray-100 my-1" />
-                            <button
-                              onClick={() => {
-                                productsApi.markAsTaken(product.id).then(() => {
-                                  // Switch to "Taken" tab after marking as taken
-                                  setStatusFilter(null);
-                                  setTakenFilter(true);
-                                  setCurrentPage(1);
-                                });
-                                setOpenDropdown(null);
-                              }}
-                              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Mark as Taken
-                            </button>
-                          </>
-                        )}
                         <div className="border-t border-gray-100 my-1" />
                         <button
                           onClick={() => {
