@@ -33,7 +33,7 @@ export default function ChatRoomsPage() {
   useEffect(() => {
     fetchChatRooms();
     fetchUsers();
-  }, [searchTerm]);
+  }, [searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchUsers = async () => {
     try {

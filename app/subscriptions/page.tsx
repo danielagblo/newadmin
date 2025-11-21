@@ -50,7 +50,7 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     fetchSubscriptions();
-  }, [searchTerm, tierFilter, activeFilter]);
+  }, [searchTerm, tierFilter, activeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchSubscriptions = async () => {
     setLoading(true);
@@ -300,9 +300,9 @@ export default function SubscriptionsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Basic Tier */}
           <div className="bg-white rounded-lg shadow-lg border-2 border-gray-300 p-6 relative">
-            {basicSubscriptions.some(s => s.discount_percentage && s.discount_percentage > 0) && (
+            {basicSubscriptions.some(s => s.discount_percentage && parseFloat(s.discount_percentage) > 0) && (
               <div className="absolute top-2 right-2 bg-gray-800 text-white px-2 py-1 text-xs font-semibold rounded">
-                For you {basicSubscriptions.find(s => s.discount_percentage && s.discount_percentage > 0)?.discount_percentage}% off
+                For you {basicSubscriptions.find(s => s.discount_percentage && parseFloat(s.discount_percentage) > 0)?.discount_percentage}% off
               </div>
             )}
             <div className="flex items-center justify-between mb-4">
