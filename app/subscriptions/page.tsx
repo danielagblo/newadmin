@@ -28,11 +28,10 @@ export default function SubscriptionsPage() {
     price: string;
     original_price: string;
     multiplier: string;
-    discount_percentage: number;
+    discount_percentage: string;
     duration_days: number;
     description: string;
     features: string;
-    max_ads: number;
     max_products: number;
     is_active: boolean;
   }>({
@@ -41,11 +40,10 @@ export default function SubscriptionsPage() {
     price: '',
     original_price: '',
     multiplier: '',
-    discount_percentage: 0,
+    discount_percentage: '',
     duration_days: 30,
     description: '',
     features: '',
-    max_ads: 0,
     max_products: 0,
     is_active: true,
   });
@@ -123,11 +121,10 @@ export default function SubscriptionsPage() {
       price: '',
       original_price: '',
       multiplier: '',
-      discount_percentage: 0,
+      discount_percentage: '',
       duration_days: 30,
       description: '',
       features: '',
-      max_ads: 0,
       max_products: 0,
       is_active: true,
     });
@@ -141,12 +138,11 @@ export default function SubscriptionsPage() {
       tier: subscription.tier,
       price: subscription.price,
       original_price: subscription.original_price || '',
-      multiplier: String(subscription.multiplier ?? ''),
-      discount_percentage: subscription.discount_percentage || 0,
+      multiplier: subscription.multiplier || '',
+      discount_percentage: subscription.discount_percentage || '',
       duration_days: subscription.duration_days,
       description: subscription.description || '',
-      features: Array.isArray(subscription.features) ? subscription.features.join(', ') : (subscription.features || ''),
-      max_ads: subscription.max_ads || 0,
+      features: subscription.features || (subscription.features_list ? subscription.features_list.join(', ') : ''),
       max_products: subscription.max_products || 0,
       is_active: subscription.is_active,
     });
@@ -173,14 +169,13 @@ export default function SubscriptionsPage() {
         name: formData.name,
         tier: formData.tier,
         price: formData.price,
-        original_price: formData.original_price || undefined,
-        multiplier: formData.multiplier ? parseFloat(formData.multiplier) : undefined,
-        discount_percentage: formData.discount_percentage || undefined,
+        original_price: formData.original_price || null,
+        multiplier: formData.multiplier || null,
+        discount_percentage: formData.discount_percentage || null,
         duration_days: formData.duration_days,
-        description: formData.description || undefined,
-        features: formData.features || undefined,
-        max_ads: formData.max_ads || undefined,
-        max_products: formData.max_products || undefined,
+        description: formData.description || null,
+        features: formData.features || null,
+        max_products: formData.max_products || 0,
         is_active: formData.is_active,
       };
       if (editingSubscription) {
@@ -238,7 +233,10 @@ export default function SubscriptionsPage() {
             <span className="text-xs text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
           )}
           {sub.discount_percentage && (
-            <span className="text-xs text-green-600 font-semibold">{sub.discount_percentage}% off</span>
+            <span className="text-xs text-green-600 font-semibold">{parseFloat(sub.discount_percentage).toFixed(0)}% off</span>
+          )}
+          {sub.effective_price && sub.effective_price !== sub.price && (
+            <span className="text-xs text-blue-600">(Effective: ₵{parseFloat(sub.effective_price).toLocaleString()})</span>
           )}
         </div>
       ),
@@ -247,11 +245,6 @@ export default function SubscriptionsPage() {
       key: 'duration_days',
       header: 'Duration',
       render: (sub: Subscription) => `${sub.duration_days} days`,
-    },
-    {
-      key: 'max_ads',
-      header: 'Max Ads',
-      render: (sub: Subscription) => sub.max_ads || 'Unlimited',
     },
     {
       key: 'max_products',
@@ -321,10 +314,9 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {basicSubscriptions.length > 0 ? (
                 basicSubscriptions.map((sub) => {
-                  const features = Array.isArray(sub.features)
-                    ? sub.features
-                    : (typeof sub.features === 'string'
-                      ? sub.features.split(',').map((f: string) => f.trim())
+                  const features = sub.features_list || 
+                    (typeof sub.features === 'string'
+                      ? sub.features.split(',').map((f: string) => f.trim()).filter(f => f)
                       : []);
                   return (
                     <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
@@ -333,6 +325,12 @@ export default function SubscriptionsPage() {
                         <span className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</span>
                         {sub.original_price && (
                           <span className="text-sm text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+                        )}
+                        {sub.discount_percentage && (
+                          <span className="text-xs text-green-600 font-semibold">{parseFloat(sub.discount_percentage).toFixed(0)}% off</span>
+                        )}
+                        {sub.effective_price && sub.effective_price !== sub.price && (
+                          <span className="text-xs text-blue-600">(Effective: ₵{parseFloat(sub.effective_price).toLocaleString()})</span>
                         )}
                       </div>
                       {features.length > 0 && (
@@ -368,10 +366,9 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {businessSubscriptions.length > 0 ? (
                 businessSubscriptions.map((sub) => {
-                  const features = Array.isArray(sub.features)
-                    ? sub.features
-                    : (typeof sub.features === 'string'
-                      ? sub.features.split(',').map((f: string) => f.trim())
+                  const features = sub.features_list || 
+                    (typeof sub.features === 'string'
+                      ? sub.features.split(',').map((f: string) => f.trim()).filter(f => f)
                       : []);
                   return (
                     <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
@@ -387,6 +384,12 @@ export default function SubscriptionsPage() {
                         <span className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</span>
                         {sub.original_price && (
                           <span className="text-sm text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+                        )}
+                        {sub.discount_percentage && (
+                          <span className="text-xs text-green-600 font-semibold">{parseFloat(sub.discount_percentage).toFixed(0)}% off</span>
+                        )}
+                        {sub.effective_price && sub.effective_price !== sub.price && (
+                          <span className="text-xs text-blue-600">(Effective: ₵{parseFloat(sub.effective_price).toLocaleString()})</span>
                         )}
                       </div>
                       {features.length > 0 && (
@@ -419,10 +422,9 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {platinumSubscriptions.length > 0 ? (
                 platinumSubscriptions.map((sub) => {
-                  const features = Array.isArray(sub.features)
-                    ? sub.features
-                    : (typeof sub.features === 'string'
-                      ? sub.features.split(',').map((f: string) => f.trim())
+                  const features = sub.features_list || 
+                    (typeof sub.features === 'string'
+                      ? sub.features.split(',').map((f: string) => f.trim()).filter(f => f)
                       : []);
                   return (
                     <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
@@ -438,6 +440,12 @@ export default function SubscriptionsPage() {
                         <span className="text-2xl font-bold text-gray-900">₵{parseFloat(sub.price).toLocaleString()}</span>
                         {sub.original_price && (
                           <span className="text-sm text-gray-400 line-through">₵{parseFloat(sub.original_price).toLocaleString()}</span>
+                        )}
+                        {sub.discount_percentage && (
+                          <span className="text-xs text-green-600 font-semibold">{parseFloat(sub.discount_percentage).toFixed(0)}% off</span>
+                        )}
+                        {sub.effective_price && sub.effective_price !== sub.price && (
+                          <span className="text-xs text-blue-600">(Effective: ₵{parseFloat(sub.effective_price).toLocaleString()})</span>
                         )}
                       </div>
                       {features.length > 0 && (
@@ -561,12 +569,10 @@ export default function SubscriptionsPage() {
               />
               <Input
                 label="Discount Percentage"
-                type="number"
-                min="0"
-                max="100"
+                type="text"
                 value={formData.discount_percentage}
-                onChange={(e) => setFormData({ ...formData, discount_percentage: parseInt(e.target.value) || 0 })}
-                placeholder="0"
+                onChange={(e) => setFormData({ ...formData, discount_percentage: e.target.value })}
+                placeholder="0.00"
               />
             </div>
 
@@ -588,30 +594,20 @@ export default function SubscriptionsPage() {
             />
 
             <Textarea
-              label="Features (comma-separated or JSON)"
+              label="Features (comma-separated)"
               value={formData.features}
               onChange={(e) => setFormData({ ...formData, features: e.target.value })}
               placeholder="Feature 1, Feature 2, Feature 3"
               rows={3}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Max Ads (0 for unlimited)"
-                type="number"
-                value={formData.max_ads}
-                onChange={(e) => setFormData({ ...formData, max_ads: parseInt(e.target.value) || 0 })}
-                placeholder="0"
-              />
-
-              <Input
-                label="Max Products (0 for unlimited)"
-                type="number"
-                value={formData.max_products}
-                onChange={(e) => setFormData({ ...formData, max_products: parseInt(e.target.value) || 0 })}
-                placeholder="0"
-              />
-            </div>
+            <Input
+              label="Max Products (0 for unlimited)"
+              type="number"
+              value={formData.max_products}
+              onChange={(e) => setFormData({ ...formData, max_products: parseInt(e.target.value) || 0 })}
+              placeholder="0"
+            />
 
             <div className="space-y-2">
               <label className="flex items-center space-x-2">

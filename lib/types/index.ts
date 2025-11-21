@@ -172,33 +172,32 @@ export interface Subscription {
   id: number;
   name: string;
   tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
-  price: string;
-  original_price?: string;
-  discount_percentage?: number;
-  multiplier?: number;
+  price: string; // Decimal string
+  original_price?: string | null; // Decimal string, nullable
+  discount_percentage?: string | null; // Decimal string, nullable
+  multiplier?: string | null; // Decimal string, nullable (just a tag for differentiating plans)
+  effective_price?: string; // ReadOnly - calculated effective price
+  description?: string | null;
+  features?: string; // Comma-separated list of features
+  features_list?: string[]; // ReadOnly - array version of features
   duration_days: number;
-  description?: string;
-  // Features can be provided as an array or a comma-separated string from the API
-  features?: string | string[];
-  max_ads?: number;
-  max_products?: number;
+  max_products?: number; // 0 for unlimited
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  created_at: string; // ReadOnly
+  updated_at: string; // ReadOnly
 }
 
 export interface CreateSubscriptionForm {
   name: string;
   tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
-  price: string;
-  original_price?: string;
-  discount_percentage?: number;
-  multiplier?: number;
+  price: string; // Decimal string
+  original_price?: string | null;
+  discount_percentage?: string | null; // Decimal string
+  multiplier?: string | null; // Decimal string
   duration_days: number;
-  description?: string;
-  features?: string[];
-  max_ads?: number;
-  max_products?: number;
+  description?: string | null;
+  features?: string; // Comma-separated string
+  max_products?: number; // 0 for unlimited
   is_active?: boolean;
 }
 
