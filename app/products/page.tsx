@@ -295,31 +295,44 @@ export default function ProductsPage() {
           return <span className="text-xs text-gray-400">-</span>;
         }
         
-        // Handle case where owner is just an ID (number)
+        // Always get the latest user data from the users list to ensure verification status is up-to-date
         let ownerUser: User | null = null;
+        let ownerId: number | null = null;
+        
+        // Get the owner ID
         if (typeof product.owner === 'number') {
-          // Look up the owner from the users list
-          ownerUser = users.find(u => u.id === product.owner) || null;
-          if (!ownerUser) {
-            return <span className="text-xs text-gray-400">-</span>;
-          }
-        } else {
-          // Owner is already a User object
-          ownerUser = product.owner;
+          ownerId = product.owner;
+        } else if (typeof product.owner === 'object' && 'id' in product.owner) {
+          ownerId = product.owner.id;
         }
         
-        // Check if ownerUser has the expected properties
+        if (!ownerId) {
+          return <span className="text-xs text-gray-400">-</span>;
+        }
+        
+        // Always look up from the users list to get the latest verification status
+        // This ensures the verification status matches what's shown in the users page
+        ownerUser = users.find(u => u.id === ownerId) || null;
+        
+        // Fallback to product.owner if not found in users list (shouldn't happen, but just in case)
+        if (!ownerUser && typeof product.owner === 'object' && 'admin_verified' in product.owner) {
+          ownerUser = product.owner as User;
+        }
+        
         if (!ownerUser || typeof ownerUser !== 'object' || !('admin_verified' in ownerUser)) {
           return <span className="text-xs text-gray-400">-</span>;
         }
         
+        // Use the admin_verified status from the users list (source of truth)
+        const isVerified = ownerUser.admin_verified;
+        
         return (
           <span className={`text-xs px-2 py-1 rounded inline-block ${
-            ownerUser.admin_verified
+            isVerified
               ? 'bg-green-100 text-green-800'
               : 'bg-yellow-100 text-yellow-800'
           }`}>
-            {ownerUser.admin_verified ? 'Verified' : 'Unverified'}
+            {isVerified ? 'Verified' : 'Unverified'}
           </span>
         );
       },
