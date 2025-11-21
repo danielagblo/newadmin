@@ -11,7 +11,7 @@ import { Select } from '@/components/ui/Select';
 import { feedbackApi } from '@/lib/api/feedback';
 import { Feedback, User } from '@/lib/types';
 import { format } from 'date-fns';
-import { MessageSquare, Eye, Trash2, CheckCircle, XCircle, Clock, Archive } from 'lucide-react';
+import { MessageSquare, Eye, Trash2, CheckCircle, XCircle, Clock, Archive, Search } from 'lucide-react';
 
 export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -21,30 +21,30 @@ export default function FeedbackPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isResponseModalOpen, setIsResponseModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [adminResponse, setAdminResponse] = useState('');
 
   const fetchFeedbacks = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      console.log('Fetching feedbacks with status filter:', statusFilter);
-      const params: any = {};
+      const params: any = {
+        ordering: '-created_at', // Order by newest first
+      };
+      
       if (statusFilter !== 'all') {
         params.status = statusFilter;
       }
       
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+      
       const data = await feedbackApi.list(params);
-      console.log('Feedbacks fetched:', data);
       const feedbacksArray = Array.isArray(data) ? data : [];
       setFeedbacks(feedbacksArray);
-      
-      if (feedbacksArray.length === 0) {
-        console.warn('No feedbacks found.');
-      }
     } catch (error: any) {
       console.error('Error fetching feedbacks:', error);
-      console.error('Error response:', error?.response);
-      console.error('Error status:', error?.response?.status);
       
       let errorMessage = 'Failed to fetch feedbacks';
       let errorDetails = '';
@@ -52,7 +52,7 @@ export default function FeedbackPage() {
       if (error?.response?.status === 404) {
         errorMessage = 'Feedbacks endpoint not found (404)';
         errorDetails = `The feedbacks API endpoint does not exist on your Django backend.\n\n` +
-          `Expected endpoints: /api-v1/feedback/, /api-v1/feedbacks/, /api-v1/admin/feedback/, /api-v1/admin/feedbacks/\n\n` +
+          `Expected endpoint: /api-v1/feedback/\n\n` +
           `Please check if the endpoint exists in your Django backend.`;
       } else if (error?.response?.status === 401) {
         errorMessage = 'Authentication failed (401)';
@@ -76,7 +76,7 @@ export default function FeedbackPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, searchTerm]);
 
   useEffect(() => {
     fetchFeedbacks();
@@ -235,7 +235,16 @@ export default function FeedbackPage() {
         )}
 
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="mb-4 flex items-center gap-4">
+          <div className="mb-4 flex items-center gap-4 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Input
+                placeholder="Search feedbacks..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}

@@ -1,10 +1,25 @@
 import apiClient from './config';
-import { ChatRoom, Message } from '../types';
+import { ChatRoom, Message, PaginatedResponse } from '../types';
 
 export const chatRoomsApi = {
-  list: async (): Promise<ChatRoom[]> => {
-    const response = await apiClient.get<ChatRoom[]>('/chatrooms/');
-    return response.data;
+  list: async (params?: {
+    ordering?: string;
+    search?: string;
+  }): Promise<ChatRoom[]> => {
+    const response = await apiClient.get<ChatRoom[] | PaginatedResponse<ChatRoom>>('/chatrooms/', { params });
+    
+    // Handle array response
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    
+    // Handle paginated response
+    const paginatedData = response.data as PaginatedResponse<ChatRoom>;
+    if (paginatedData.results && Array.isArray(paginatedData.results)) {
+      return paginatedData.results;
+    }
+    
+    return [];
   },
 
   get: async (id: number): Promise<ChatRoom> => {

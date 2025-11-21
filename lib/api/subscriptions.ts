@@ -1,10 +1,29 @@
 import apiClient from './config';
-import { Subscription, CreateSubscriptionForm } from '../types';
+import { Subscription, CreateSubscriptionForm, PaginatedResponse } from '../types';
 
 export const subscriptionsApi = {
-  list: async (): Promise<Subscription[]> => {
-    const response = await apiClient.get<Subscription[]>('/subscriptions/');
-    return response.data;
+  list: async (params?: {
+    duration_days?: number;
+    is_active?: boolean;
+    max_products?: number;
+    price?: number;
+    ordering?: string;
+    search?: string;
+  }): Promise<Subscription[]> => {
+    const response = await apiClient.get<Subscription[] | PaginatedResponse<Subscription>>('/subscriptions/', { params });
+    
+    // Handle array response
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    
+    // Handle paginated response
+    const paginatedData = response.data as PaginatedResponse<Subscription>;
+    if (paginatedData.results && Array.isArray(paginatedData.results)) {
+      return paginatedData.results;
+    }
+    
+    return [];
   },
 
   get: async (id: number): Promise<Subscription> => {

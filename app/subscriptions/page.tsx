@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { subscriptionsApi } from '@/lib/api/subscriptions';
 import { Subscription, SUBSCRIPTION_TIERS } from '@/lib/types';
 import { format } from 'date-fns';
-import { Briefcase, Check, Crown, Plus, Sparkles } from 'lucide-react';
+import { Briefcase, Check, Crown, Plus, Sparkles, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 export default function SubscriptionsPage() {
@@ -19,6 +19,9 @@ export default function SubscriptionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tierFilter, setTierFilter] = useState<string>('all');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
   const [formData, setFormData] = useState<{
     name: string;
     tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
@@ -49,23 +52,36 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     fetchSubscriptions();
-  }, []);
+  }, [searchTerm, tierFilter, activeFilter]);
 
   const fetchSubscriptions = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await subscriptionsApi.list();
-      console.log('Subscriptions fetched:', data);
-      const subscriptionsArray = Array.isArray(data) ? data : [];
-      setSubscriptions(subscriptionsArray);
-      if (subscriptionsArray.length === 0) {
-        console.warn('No subscriptions found. The API endpoint might not exist or return empty data.');
+      const params: any = {
+        ordering: 'tier,price', // Order by tier then price
+      };
+      
+      if (searchTerm) {
+        params.search = searchTerm;
       }
+      
+      if (activeFilter !== 'all') {
+        params.is_active = activeFilter === 'active';
+      }
+      
+      const data = await subscriptionsApi.list(params);
+      const subscriptionsArray = Array.isArray(data) ? data : [];
+      
+      // Client-side filtering for tier if needed (since API might not support it)
+      let filteredSubscriptions = subscriptionsArray;
+      if (tierFilter !== 'all') {
+        filteredSubscriptions = subscriptionsArray.filter(s => s.tier === tierFilter);
+      }
+      
+      setSubscriptions(filteredSubscriptions);
     } catch (error: any) {
       console.error('Error fetching subscriptions:', error);
-      console.error('Error response:', error?.response);
-      console.error('Error status:', error?.response?.status);
 
       let errorMessage = 'Failed to fetch subscriptions';
       let errorDetails = '';
@@ -447,8 +463,40 @@ export default function SubscriptionsPage() {
         {/* All Subscriptions Table */}
         <div className="bg-white rounded-lg shadow p-6">
           {!error && (
-            <div className="mb-4 text-sm text-gray-600">
-              Total subscriptions: {subscriptions.length}
+            <div className="mb-4 flex items-center gap-4 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  placeholder="Search subscriptions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select
+                value={tierFilter}
+                onChange={(e) => setTierFilter(e.target.value)}
+                className="w-40"
+                options={[
+                  { value: 'all', label: 'All Tiers' },
+                  { value: 'BASIC', label: 'Basic' },
+                  { value: 'BUSINESS', label: 'Business' },
+                  { value: 'PLATINUM', label: 'Platinum' },
+                ]}
+              />
+              <Select
+                value={activeFilter}
+                onChange={(e) => setActiveFilter(e.target.value)}
+                className="w-40"
+                options={[
+                  { value: 'all', label: 'All Status' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' },
+                ]}
+              />
+              <div className="text-sm text-gray-600">
+                Total: {subscriptions.length} subscription{subscriptions.length !== 1 ? 's' : ''}
+              </div>
             </div>
           )}
           <DataTable

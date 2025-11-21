@@ -10,7 +10,7 @@ import { chatRoomsApi } from '@/lib/api/chats';
 import { usersApi } from '@/lib/api/users';
 import { ChatRoom, Message, User } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, MessageSquare, RefreshCw } from 'lucide-react';
+import { Plus, MessageSquare, RefreshCw, Search } from 'lucide-react';
 
 export default function ChatRoomsPage() {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -23,6 +23,7 @@ export default function ChatRoomsPage() {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     is_group: false,
@@ -32,7 +33,7 @@ export default function ChatRoomsPage() {
   useEffect(() => {
     fetchChatRooms();
     fetchUsers();
-  }, []);
+  }, [searchTerm]);
 
   const fetchUsers = async () => {
     try {
@@ -47,8 +48,15 @@ export default function ChatRoomsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await chatRoomsApi.list();
-      console.log('Chat rooms fetched:', data);
+      const params: any = {
+        ordering: '-created_at', // Order by newest first
+      };
+      
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+      
+      const data = await chatRoomsApi.list(params);
       setChatRooms(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error('Error fetching chat rooms:', error);
@@ -222,8 +230,19 @@ export default function ChatRoomsPage() {
 
         <div className="bg-white rounded-lg shadow p-6">
           {!error && (
-            <div className="mb-4 text-sm text-gray-600">
-              Total chat rooms: {chatRooms.length}
+            <div className="mb-4 flex items-center gap-4 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  placeholder="Search chat rooms..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="text-sm text-gray-600">
+                Total: {chatRooms.length} chat room{chatRooms.length !== 1 ? 's' : ''}
+              </div>
             </div>
           )}
           <DataTable
