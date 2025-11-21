@@ -334,7 +334,7 @@ export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
 export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
 
 // Product Status Constants
-export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
+export const PRODUCT_STATUSES = ['ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
 
 // Region Constants
 export const REGIONS = [

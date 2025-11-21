@@ -15,7 +15,7 @@ import { locationsApi } from '@/lib/api/locations';
 import { usersApi } from '@/lib/api/users';
 import { Product, Category, Location, User, PRODUCT_TYPES, PRODUCT_STATUSES } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Search, X } from 'lucide-react';
+import { Plus, Search, X, MoreVertical, Eye, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl } from '@/lib/utils';
 
@@ -32,12 +32,13 @@ export default function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [formData, setFormData] = useState<{
     name: string;
     category: string;
     location: string;
     type: 'SALE' | 'PAYLATER' | 'RENT';
-    status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
+    status: 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
     description: string;
     price: string;
     duration: string;
@@ -407,34 +408,92 @@ export default function ProductsPage() {
           <DataTable
             data={products}
             columns={columns}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
             isLoading={loading}
             actions={(product: Product) => (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.location.href = `/products/${product.id}`}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === product.id ? null : product.id)}
+                  className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+                  aria-label="Actions"
                 >
-                  View
-                </Button>
-                <Select
-                  value={product.status}
-                  onChange={(e) => handleSetStatus(product, e.target.value)}
-                  options={PRODUCT_STATUSES.map(s => ({ value: s, label: s }))}
-                  className="w-32"
-                />
-                {!product.is_taken && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => productsApi.markAsTaken(product.id).then(() => fetchProducts())}
-                  >
-                    Mark Taken
-                  </Button>
+                  <MoreVertical className="h-4 w-4 text-gray-600" />
+                </button>
+                {openDropdown === product.id && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setOpenDropdown(null)}
+                    />
+                    <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-20">
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            window.location.href = `/products/${product.id}`;
+                            setOpenDropdown(null);
+                          }}
+                          className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleEdit(product);
+                            setOpenDropdown(null);
+                          }}
+                          className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </button>
+                        <div className="border-t border-gray-100 my-1" />
+                        <div className="px-4 py-2">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">
+                            Status
+                          </label>
+                          <Select
+                            value={product.status}
+                            onChange={(e) => {
+                              handleSetStatus(product, e.target.value);
+                              setOpenDropdown(null);
+                            }}
+                            options={PRODUCT_STATUSES.map(s => ({ value: s, label: s }))}
+                            className="w-full text-sm"
+                          />
+                        </div>
+                        {!product.is_taken && (
+                          <>
+                            <div className="border-t border-gray-100 my-1" />
+                            <button
+                              onClick={() => {
+                                productsApi.markAsTaken(product.id).then(() => fetchProducts());
+                                setOpenDropdown(null);
+                              }}
+                              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Mark as Taken
+                            </button>
+                          </>
+                        )}
+                        <div className="border-t border-gray-100 my-1" />
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to delete this product?')) {
+                              handleDelete(product);
+                            }
+                            setOpenDropdown(null);
+                          }}
+                          className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
-              </>
+              </div>
             )}
           />
 
