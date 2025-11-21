@@ -398,17 +398,6 @@ export default function ProductsPage() {
       },
     },
     {
-      key: 'is_taken',
-      header: 'Taken',
-      render: (product: Product) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-        }`}>
-          {product.is_taken ? 'Yes' : 'No'}
-        </span>
-      ),
-    },
-    {
       key: 'created_at',
       header: 'Created',
       render: (product: Product) => format(new Date(product.created_at), 'MMM dd, yyyy'),
