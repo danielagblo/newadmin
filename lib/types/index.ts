@@ -34,23 +34,52 @@ export interface User {
   updated_at: string;
 }
 
-// Product Types
+// Product Types (matching Django API schema)
+export interface ProductOwner {
+  id: number;
+  email: string;
+  phone: string;
+  name: string;
+}
+
+export interface ProductLocation {
+  id: number;
+  region: string;
+  name?: string | null;
+}
+
+export interface ProductImage {
+  id: number;
+  product: number;
+  image: string;
+  created_at: string;
+}
+
+export interface ProductFeature {
+  id: number;
+  product: number;
+  feature: any; // Feature object
+  value: string;
+}
+
 export interface Product {
   id: number;
   pid: string;
   name: string;
-  image?: string;
-  category?: number;
-  location?: Location;
+  image?: string | null;
+  category?: number | null;
+  location?: ProductLocation; // ReadOnly
   type: 'SALE' | 'PAYLATER' | 'RENT';
-  status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED' | 'TAKEN';
+  status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
   is_taken: boolean;
   description: string;
-  price: string;
+  price: string; // Decimal string
   duration: string;
-  owner: User | number;
-  created_at: string;
-  updated_at: string;
+  owner?: ProductOwner; // ReadOnly - ProductOwner object, not User
+  images?: ProductImage[]; // ReadOnly
+  product_features?: ProductFeature[]; // ReadOnly
+  created_at: string; // ReadOnly
+  updated_at: string; // ReadOnly
 }
 
 // Location Types
@@ -332,8 +361,8 @@ export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
 // Product Type Constants
 export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
 
-// Product Status Constants
-export const PRODUCT_STATUSES = ['ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED', 'TAKEN'] as const;
+// Product Status Constants (matching Django API ProductStatusEnum)
+export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
 
 // Region Constants
 export const REGIONS = [

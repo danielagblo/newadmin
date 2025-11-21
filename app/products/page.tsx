@@ -15,7 +15,7 @@ import { locationsApi } from '@/lib/api/locations';
 import { usersApi } from '@/lib/api/users';
 import { Product, Category, Location, User, PRODUCT_TYPES, PRODUCT_STATUSES } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Search, X, MoreVertical, Eye, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Search, MoreVertical, Eye, Edit, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { getImageUrl } from '@/lib/utils';
 
@@ -33,13 +33,14 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null); // null = all, or specific status
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [takenFilter, setTakenFilter] = useState<boolean | null>(null);
   const [formData, setFormData] = useState<{
     name: string;
     category: string;
     location: string;
     type: 'SALE' | 'PAYLATER' | 'RENT';
-    status: 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED' | 'TAKEN';
+    status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
     description: string;
     price: string;
     duration: string;
@@ -62,14 +63,12 @@ export default function ProductsPage() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all products first, then filter client-side for accuracy
-      const params: any = { page: currentPage };
+      const params: any = {
+        ordering: '-created_at',
+      };
       if (searchTerm) params.search = searchTerm;
-      // Don't send status/is_taken filters to backend - we'll filter client-side
-      
+
       const data = await productsApi.list(params);
-      console.log('Products fetched:', data);
-      console.log('Current filters - statusFilter:', statusFilter);
       
       let allProducts: Product[] = [];
       if (Array.isArray(data)) {
@@ -77,41 +76,42 @@ export default function ProductsPage() {
       } else {
         allProducts = data.results || [];
       }
-      
-      console.log('All products before filtering:', allProducts.length);
-      
-      // STRICT Client-side filtering - filter to show ONLY matching products
+
+      // Client-side filtering
       let filteredProducts = allProducts;
       
-      if (statusFilter) {
-        if (statusFilter === 'TAKEN') {
-          // "TAKEN" status tab: Show products with TAKEN status OR is_taken=true
-          filteredProducts = allProducts.filter(p => p.status === 'TAKEN' || p.is_taken === true);
-        } else {
-          // Other status tabs: Show ONLY products with EXACT status match AND not taken
-          filteredProducts = allProducts.filter(p => {
-            const statusMatch = p.status === statusFilter;
-            const notTaken = p.is_taken === false;
-            return statusMatch && notTaken;
-          });
-        }
+      if (takenFilter !== null) {
+        // Filter by taken status
+        filteredProducts = filteredProducts.filter(p => p.is_taken === takenFilter);
       }
-      // "All" tab: No filtering, shows everything
       
+      if (statusFilter) {
+        // Filter by status (excluding taken products unless takenFilter is true)
+        filteredProducts = filteredProducts.filter(p => {
+          if (p.status === statusFilter) {
+            // If filtering by status, exclude taken products unless we're specifically showing taken
+            if (takenFilter === null) {
+              return !p.is_taken;
+            }
+            return true;
+          }
+          return false;
+        });
+      }
+
       setProducts(filteredProducts);
       setTotalItems(filteredProducts.length);
       setTotalPages(Math.ceil(filteredProducts.length / 20));
     } catch (error: any) {
       console.error('Error fetching products:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch products';
-      setError(errorMessage);
+      setError(error?.response?.data?.detail || error?.message || 'Failed to fetch products');
       setProducts([]);
       setTotalItems(0);
       setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, statusFilter]);
+  }, [searchTerm, statusFilter, takenFilter]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -166,39 +166,25 @@ export default function ProductsPage() {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
-    // Handle owner - could be User object or number (ID)
-    let ownerId = '';
-    if (product.owner) {
-      if (typeof product.owner === 'number') {
-        ownerId = product.owner.toString();
-      } else if (typeof product.owner === 'object' && 'id' in product.owner) {
-        ownerId = product.owner.id.toString();
-      }
-    }
-    
-    // Convert VERIFIED status to ACTIVE since VERIFIED is no longer a valid status option
-    // If product is taken but status is not TAKEN, set status to TAKEN
-    let status = product.status === 'VERIFIED' ? 'ACTIVE' : product.status;
-    if (product.is_taken && status !== 'TAKEN') {
-      status = 'TAKEN';
-    }
-    
     setFormData({
       name: product.name,
       category: product.category?.toString() || '',
       location: product.location?.id?.toString() || '',
       type: product.type,
-      status: status as 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED' | 'TAKEN',
+      status: product.status,
       description: product.description,
       price: product.price,
       duration: product.duration,
-      owner: ownerId,
+      owner: product.owner?.id?.toString() || '',
       image: null,
     });
     setIsModalOpen(true);
   };
 
   const handleDelete = async (product: Product) => {
+    if (!window.confirm(`Are you sure you want to delete product "${product.name}"?`)) {
+      return;
+    }
     try {
       await productsApi.delete(product.id);
       fetchProducts();
@@ -211,7 +197,6 @@ export default function ProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate required fields
     if (!formData.owner) {
       window.alert('Please select an owner for the product');
       return;
@@ -220,42 +205,20 @@ export default function ProductsPage() {
     try {
       const submitData: any = {
         ...formData,
-        category: formData.category ? parseInt(formData.category) : undefined,
-        location: formData.location ? parseInt(formData.location) : undefined,
-        owner: parseInt(formData.owner), // Owner is required, so always parse it
+        category: formData.category ? parseInt(formData.category) : null,
+        location: formData.location ? parseInt(formData.location) : null,
+        owner: parseInt(formData.owner),
       };
       delete submitData.image;
 
       let updatedProduct: Product;
       if (editingProduct) {
         updatedProduct = await productsApi.update(editingProduct.id, submitData);
-        // If status is TAKEN, also mark as taken
-        if (formData.status === 'TAKEN') {
-          await productsApi.markAsTaken(editingProduct.id);
-          // Refetch to get updated product
-          updatedProduct = await productsApi.get(editingProduct.id);
-        }
       } else {
         updatedProduct = await productsApi.create(submitData);
-        // If status is TAKEN, also mark as taken
-        if (formData.status === 'TAKEN') {
-          await productsApi.markAsTaken(updatedProduct.id);
-          // Refetch to get updated product
-          updatedProduct = await productsApi.get(updatedProduct.id);
-        }
       }
       setIsModalOpen(false);
-      
-      // Switch to appropriate tab based on product state
-      // If product status is TAKEN or is_taken is true, show in TAKEN status tab
-      // Otherwise, show in the status tab that matches the product's status
-      if (updatedProduct.status === 'TAKEN' || updatedProduct.is_taken) {
-        setStatusFilter('TAKEN');
-        setCurrentPage(1);
-      } else {
-        setStatusFilter(updatedProduct.status);
-        setCurrentPage(1);
-      }
+      fetchProducts();
     } catch (error: any) {
       console.error('Error saving product:', error);
       window.alert(error.response?.data?.detail || 'Failed to save product');
@@ -264,44 +227,23 @@ export default function ProductsPage() {
 
   const handleSetStatus = async (product: Product, status: string) => {
     try {
-      let updatedProduct: Product;
-      
-      if (status === 'TAKEN') {
-        // For TAKEN status, use setStatus endpoint first
-        try {
-          updatedProduct = await productsApi.setStatus(product.id, status);
-          // If setStatus succeeds but doesn't mark as taken, also call markAsTaken
-          if (!updatedProduct.is_taken) {
-            await productsApi.markAsTaken(product.id);
-            // Refetch to get updated product
-            updatedProduct = await productsApi.get(product.id);
-          }
-        } catch (setStatusError: any) {
-          // If setStatus doesn't accept TAKEN, mark as taken and use update endpoint
-          console.warn('setStatus failed for TAKEN, using markAsTaken + update:', setStatusError);
-          await productsApi.markAsTaken(product.id);
-          updatedProduct = await productsApi.update(product.id, { status: 'TAKEN' });
-        }
-      } else {
-        // For other statuses, use setStatus endpoint
-        updatedProduct = await productsApi.setStatus(product.id, status);
-      }
-      
-      // Refresh the product list
+      const updatedProduct = await productsApi.setStatus(product.id, status);
       await fetchProducts();
-      
-      // Switch to the appropriate tab based on status
-      if (status === 'TAKEN' || updatedProduct.is_taken) {
-        setStatusFilter('TAKEN');
-      } else {
-        // Switch to the status tab that matches the updated status
-        setStatusFilter(status);
-      }
-      setCurrentPage(1);
       setOpenDropdown(null);
     } catch (error: any) {
       console.error('Error updating status:', error);
       window.alert(error?.response?.data?.detail || 'Failed to update status');
+    }
+  };
+
+  const handleMarkAsTaken = async (product: Product) => {
+    try {
+      await productsApi.markAsTaken(product.id);
+      await fetchProducts();
+      setOpenDropdown(null);
+    } catch (error: any) {
+      console.error('Error marking product as taken:', error);
+      window.alert(error?.response?.data?.detail || 'Failed to mark product as taken');
     }
   };
 
@@ -311,21 +253,26 @@ export default function ProductsPage() {
       header: 'ID',
     },
     {
+      key: 'pid',
+      header: 'PID',
+    },
+    {
       key: 'name',
       header: 'Name',
-    },
-    {
-      key: 'price',
-      header: 'Price',
-      render: (product: Product) => `GHS ${product.price}`,
-    },
-    {
-      key: 'type',
-      header: 'Type',
       render: (product: Product) => (
-        <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
-          {product.type}
-        </span>
+        <div className="flex items-center gap-2">
+          {product.image && (
+            <div className="relative w-10 h-10 rounded overflow-hidden border border-gray-300 flex-shrink-0">
+              <Image
+                src={getImageUrl(product.image)}
+                alt={product.name}
+                fill
+                className="object-cover"
+              />
+            </div>
+          )}
+          <span className="font-medium">{product.name}</span>
+        </div>
       ),
     },
     {
@@ -343,6 +290,17 @@ export default function ProductsPage() {
       ),
     },
     {
+      key: 'is_taken',
+      header: 'Taken',
+      render: (product: Product) => (
+        <span className={`px-2 py-1 rounded text-xs ${
+          product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+        }`}>
+          {product.is_taken ? 'Yes' : 'No'}
+        </span>
+      ),
+    },
+    {
       key: 'owner',
       header: 'Owner',
       render: (product: Product) => {
@@ -350,37 +308,9 @@ export default function ProductsPage() {
           return <span className="text-xs text-gray-400">No owner</span>;
         }
         
-        // Handle case where owner is just an ID (number)
-        let ownerUser: User | null = null;
-        if (typeof product.owner === 'number') {
-          // Look up the owner from the users list
-          ownerUser = users.find(u => u.id === product.owner) || null;
-          if (!ownerUser) {
-            return <span className="text-xs text-gray-400">Owner ID: {product.owner}</span>;
-          }
-        } else {
-          // Owner is already a User object
-          ownerUser = product.owner;
-        }
-        
-        // Check if ownerUser has the expected properties
-        if (!ownerUser || typeof ownerUser !== 'object' || !('name' in ownerUser)) {
-          return <span className="text-xs text-gray-400">Invalid owner data</span>;
-        }
-        
         return (
           <div className="flex items-center gap-2">
-            {ownerUser.avatar && (
-              <div className="relative w-6 h-6 rounded-full overflow-hidden border border-gray-300 flex-shrink-0">
-                <Image
-                  src={getImageUrl(ownerUser.avatar)}
-                  alt={ownerUser.name}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-            )}
-            <span className="text-xs font-medium text-gray-900">{ownerUser.name}</span>
+            <span className="text-xs font-medium text-gray-900">{product.owner.name}</span>
           </div>
         );
       },
@@ -393,47 +323,32 @@ export default function ProductsPage() {
           return <span className="text-xs text-gray-400">-</span>;
         }
         
-        // Always get the latest user data from the users list to ensure verification status is up-to-date
-        let ownerUser: User | null = null;
-        let ownerId: number | null = null;
-        
-        // Get the owner ID
-        if (typeof product.owner === 'number') {
-          ownerId = product.owner;
-        } else if (typeof product.owner === 'object' && 'id' in product.owner) {
-          ownerId = product.owner.id;
-        }
-        
-        if (!ownerId) {
-          return <span className="text-xs text-gray-400">-</span>;
-        }
-        
-        // Always look up from the users list to get the latest verification status
-        // This ensures the verification status matches what's shown in the users page
-        ownerUser = users.find(u => u.id === ownerId) || null;
-        
-        // Fallback to product.owner if not found in users list (shouldn't happen, but just in case)
-        if (!ownerUser && typeof product.owner === 'object' && 'admin_verified' in product.owner) {
-          ownerUser = product.owner as User;
-        }
-        
-        if (!ownerUser || typeof ownerUser !== 'object' || !('admin_verified' in ownerUser)) {
-          return <span className="text-xs text-gray-400">-</span>;
-        }
-        
-        // Use the admin_verified status from the users list (source of truth)
-        const isVerified = ownerUser.admin_verified;
+        // Look up owner in users list to get verification status
+        const ownerUser = users.find(u => u.id === product.owner?.id);
+        const isVerified = ownerUser?.admin_verified || false;
         
         return (
-          <span className={`text-xs px-2 py-1 rounded inline-block ${
-            isVerified
-              ? 'bg-green-100 text-green-800'
-              : 'bg-yellow-100 text-yellow-800'
+          <span className={`px-2 py-1 rounded text-xs ${
+            isVerified ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
           }`}>
             {isVerified ? 'Verified' : 'Unverified'}
           </span>
         );
       },
+    },
+    {
+      key: 'price',
+      header: 'Price',
+      render: (product: Product) => `₵${parseFloat(product.price).toLocaleString()}`,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (product: Product) => (
+        <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+          {product.type}
+        </span>
+      ),
     },
     {
       key: 'created_at',
@@ -445,8 +360,8 @@ export default function ProductsPage() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Products</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-2" />
             Add Product
@@ -478,7 +393,12 @@ export default function ProductsPage() {
                   Showing: <span className="font-medium">{statusFilter} Products</span>
                 </span>
               )}
-              {!statusFilter && (
+              {takenFilter !== null && (
+                <span className="inline-block mr-2">
+                  Showing: <span className="font-medium">{takenFilter ? 'Taken' : 'Not Taken'} Products</span>
+                </span>
+              )}
+              {!statusFilter && takenFilter === null && (
                 <span className="inline-block mr-2">Showing: <span className="font-medium">All Products</span></span>
               )}
               | Total: {totalItems} | Page {currentPage} of {totalPages}
@@ -491,10 +411,11 @@ export default function ProductsPage() {
               <button
                 onClick={() => {
                   setStatusFilter(null);
+                  setTakenFilter(null);
                   setCurrentPage(1);
                 }}
                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  statusFilter === null
+                  statusFilter === null && takenFilter === null
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
@@ -506,10 +427,11 @@ export default function ProductsPage() {
                   key={status}
                   onClick={() => {
                     setStatusFilter(status);
+                    setTakenFilter(null);
                     setCurrentPage(1);
                   }}
                   className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                    statusFilter === status
+                    statusFilter === status && takenFilter === null
                       ? 'border-primary-500 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
@@ -517,6 +439,20 @@ export default function ProductsPage() {
                   {status}
                 </button>
               ))}
+              <button
+                onClick={() => {
+                  setStatusFilter(null);
+                  setTakenFilter(true);
+                  setCurrentPage(1);
+                }}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  takenFilter === true
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Taken
+              </button>
             </nav>
           </div>
 
@@ -587,10 +523,24 @@ export default function ProductsPage() {
                               handleSetStatus(product, e.target.value);
                               setOpenDropdown(null);
                             }}
-                            options={PRODUCT_STATUSES.map(s => ({ value: s, label: s }))}
-                            className="w-full text-sm"
+                            options={PRODUCT_STATUSES.map(status => ({
+                              value: status,
+                              label: status,
+                            }))}
                           />
                         </div>
+                        {!product.is_taken && (
+                          <div className="border-t border-gray-100 my-1" />
+                          <button
+                            onClick={() => {
+                              handleMarkAsTaken(product);
+                              setOpenDropdown(null);
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            Mark as Taken
+                          </button>
+                        )}
                         <div className="border-t border-gray-100 my-1" />
                         <button
                           onClick={() => {
@@ -613,87 +563,72 @@ export default function ProductsPage() {
           />
 
           {totalPages > 1 && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              totalItems={totalItems}
-              itemsPerPage={20}
-            />
+            <div className="mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </div>
           )}
         </div>
 
+        {/* Create/Edit Modal */}
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           title={editingProduct ? 'Edit Product' : 'Create Product'}
-          size="xl"
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
-              label="Name"
-              required
+              label="Name *"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
             />
+
             <div className="grid grid-cols-2 gap-4">
               <Select
-                label="Category"
+                label="Category *"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                required
                 options={[
                   { value: '', label: 'Select Category' },
-                  ...categories.map(c => ({ value: c.id.toString(), label: c.name })),
+                  ...categories.map(cat => ({ value: cat.id.toString(), label: cat.name })),
                 ]}
               />
+
               <Select
-                label="Location"
+                label="Location *"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                required
                 options={[
                   { value: '', label: 'Select Location' },
-                  ...locations.map(l => ({ value: l.id.toString(), label: l.name })),
+                  ...locations.map(loc => ({ value: loc.id.toString(), label: loc.name })),
                 ]}
               />
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <Select
-                label="Type"
-                required
+                label="Type *"
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                options={PRODUCT_TYPES.map(t => ({ value: t, label: t }))}
-              />
-              <Select
-                label="Status"
                 required
+                options={PRODUCT_TYPES.map(type => ({ value: type, label: type }))}
+              />
+
+              <Select
+                label="Status *"
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                options={PRODUCT_STATUSES.map(s => ({ value: s, label: s }))}
-              />
-            </div>
-            <Textarea
-              label="Description"
-              required
-              rows={4}
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Price"
-                type="number"
-                step="0.01"
                 required
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-              />
-              <Input
-                label="Duration"
-                value={formData.duration}
-                onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                options={PRODUCT_STATUSES.map(status => ({ value: status, label: status }))}
               />
             </div>
+
             <Select
               label="Owner *"
               value={formData.owner}
@@ -704,121 +639,44 @@ export default function ProductsPage() {
                 ...users.map(u => ({ value: u.id.toString(), label: u.name })),
               ]}
             />
-            {/* Show existing image if editing */}
-            {editingProduct && editingProduct.image && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Product Image
-                </label>
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="relative group">
-                    <div className="relative w-full h-32 rounded-lg overflow-hidden border border-gray-200">
-                      <Image
-                        src={getImageUrl(editingProduct.image)}
-                        alt={editingProduct.name}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 text-center">Main Image</p>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* Owner Information */}
-            {editingProduct && editingProduct.owner && (() => {
-              // Handle owner - could be User object or number (ID)
-              let ownerUser: User | null = null;
-              if (typeof editingProduct.owner === 'number') {
-                ownerUser = users.find(u => u.id === editingProduct.owner) || null;
-              } else if (typeof editingProduct.owner === 'object' && 'name' in editingProduct.owner) {
-                ownerUser = editingProduct.owner as User;
-              }
-              
-              if (!ownerUser) {
-                return (
-                  <div className="border rounded-lg p-4 bg-gray-50">
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Owner Information
-                    </label>
-                    <p className="text-sm text-gray-600">
-                      {typeof editingProduct.owner === 'number' 
-                        ? `Owner ID: ${editingProduct.owner}` 
-                        : 'Owner information not available'}
-                    </p>
-                  </div>
-                );
-              }
-              
-              return (
-                <div className="border rounded-lg p-4 bg-gray-50">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Owner Information
-                  </label>
-                  <div className="flex items-start gap-4">
-                    {ownerUser.avatar && (
-                      <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-gray-300 flex-shrink-0">
-                        <Image
-                          src={getImageUrl(ownerUser.avatar)}
-                          alt={ownerUser.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-gray-900">{ownerUser.name}</h4>
-                        {ownerUser.level && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            ownerUser.level === 'DIAMOND' ? 'bg-purple-100 text-purple-800' :
-                            ownerUser.level === 'GOLD' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {ownerUser.level}
-                          </span>
-                        )}
-                        {ownerUser.admin_verified && (
-                          <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
-                            Verified
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600">{ownerUser.email}</p>
-                      {ownerUser.phone && (
-                        <p className="text-sm text-gray-600">{ownerUser.phone}</p>
-                      )}
-                      {ownerUser.business_name && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          Business: {ownerUser.business_name}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          ownerUser.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {ownerUser.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Price (GHS) *"
+                type="number"
+                step="0.01"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                required
+              />
+
+              <Input
+                label="Duration *"
+                value={formData.duration}
+                onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                required
+              />
+            </div>
+
+            <Textarea
+              label="Description *"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              required
+              rows={4}
+            />
 
             <Input
               label="Image"
               type="file"
               accept="image/*"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) setFormData({ ...formData, image: file });
+                const file = e.target.files?.[0] || null;
+                setFormData({ ...formData, image: file });
               }}
             />
-            <div className="flex justify-end space-x-2 pt-4">
+
+            <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -826,7 +684,9 @@ export default function ProductsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Save</Button>
+              <Button type="submit">
+                {editingProduct ? 'Update' : 'Create'}
+              </Button>
             </div>
           </form>
         </Modal>
