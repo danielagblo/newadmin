@@ -55,9 +55,10 @@ export default function LocationsPage() {
           grouped[location.region].push(location);
         } else {
           // Try case-insensitive match
-          const matchedRegion = REGIONS.find(r => r.toLowerCase() === location.region.toLowerCase());
+          const regionStr = String(location.region).toLowerCase();
+          const matchedRegion = REGIONS.find(r => r.toLowerCase() === regionStr);
           if (matchedRegion) {
-            console.log(`  ✓ Case-insensitive match: "${location.region}" -> "${matchedRegion}"`);
+            console.log(`  ✓ Case-insensitive match: "${regionStr}" -> "${matchedRegion}"`);
             grouped[matchedRegion].push(location);
           } else {
             // Location has a region that's not in our REGIONS list
@@ -152,8 +153,8 @@ export default function LocationsPage() {
     setSelectedRegion(null);
     setFormData({
       name: location.name,
-      region: location.region,
-      description: location.description || '',
+      region: location.region ?? 'Greater Accra',
+      description: (location as any).description || '',
       is_active: location.is_active ?? true,
     });
     setIsModalOpen(true);
@@ -314,8 +315,8 @@ export default function LocationsPage() {
                                       {location.is_active ? 'Active' : 'Inactive'}
                                     </span>
                                   </div>
-                                  {location.description && (
-                                    <p className="text-sm text-gray-600 mt-1">{location.description}</p>
+                                  {(location as any).description && (
+                                    <p className="text-sm text-gray-600 mt-1">{(location as any).description}</p>
                                   )}
                                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                                     {location.created_at && (
