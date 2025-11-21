@@ -65,8 +65,15 @@ export default function ProductsPage() {
     try {
       const params: any = { page: currentPage };
       if (searchTerm) params.search = searchTerm;
-      if (statusFilter) params.status = statusFilter;
-      if (takenFilter !== null) params.is_taken = takenFilter;
+      
+      // If filtering by taken status, only use is_taken filter (taken products show regardless of status)
+      if (takenFilter !== null) {
+        params.is_taken = takenFilter;
+      } else if (statusFilter) {
+        // If filtering by status, exclude taken products (taken products only show in "Taken" tab)
+        params.status = statusFilter;
+        params.is_taken = false;
+      }
       
       const data = await productsApi.list(params);
       console.log('Products fetched:', data);
@@ -194,12 +201,24 @@ export default function ProductsPage() {
       };
       delete submitData.image;
 
+      let updatedProduct: Product;
       if (editingProduct) {
-        await productsApi.update(editingProduct.id, submitData);
+        updatedProduct = await productsApi.update(editingProduct.id, submitData);
       } else {
-        await productsApi.create(submitData);
+        updatedProduct = await productsApi.create(submitData);
       }
       setIsModalOpen(false);
+      
+      // Switch to appropriate tab based on product state
+      // If product is taken, show in "Taken" tab, otherwise show in status tab
+      if (updatedProduct.is_taken) {
+        setStatusFilter(null);
+        setTakenFilter(true);
+      } else {
+        setStatusFilter(updatedProduct.status);
+        setTakenFilter(null);
+      }
+      setCurrentPage(1);
       fetchProducts();
     } catch (error: any) {
       console.error('Error saving product:', error);
@@ -209,7 +228,17 @@ export default function ProductsPage() {
 
   const handleSetStatus = async (product: Product, status: string) => {
     try {
-      await productsApi.setStatus(product.id, status);
+      const updatedProduct = await productsApi.setStatus(product.id, status);
+      // If product is taken, switch to "Taken" tab (taken products always show in Taken tab)
+      // Otherwise, switch to the status tab
+      if (updatedProduct.is_taken) {
+        setStatusFilter(null);
+        setTakenFilter(true);
+      } else {
+        setStatusFilter(status);
+        setTakenFilter(null);
+      }
+      setCurrentPage(1);
       fetchProducts();
     } catch (error) {
       console.error('Error updating status:', error);
@@ -395,18 +424,18 @@ export default function ProductsPage() {
         <div className="bg-white rounded-lg shadow p-6">
           {!error && (
             <div className="mb-4 text-sm text-gray-600">
-              {statusFilter && (
+              {takenFilter === true && (
                 <span className="inline-block mr-2">
-                  Filter: <span className="font-medium">{statusFilter}</span>
+                  Showing: <span className="font-medium">Taken Products</span>
                 </span>
               )}
-              {takenFilter !== null && (
+              {statusFilter && takenFilter === null && (
                 <span className="inline-block mr-2">
-                  Filter: <span className="font-medium">{takenFilter ? 'Taken' : 'Not Taken'}</span>
+                  Showing: <span className="font-medium">{statusFilter} Products</span> (excluding taken)
                 </span>
               )}
               {!statusFilter && takenFilter === null && (
-                <span className="inline-block mr-2">Showing all products</span>
+                <span className="inline-block mr-2">Showing: <span className="font-medium">All Products</span></span>
               )}
               | Total: {totalItems} | Page {currentPage} of {totalPages}
             </div>
@@ -438,7 +467,7 @@ export default function ProductsPage() {
                     setCurrentPage(1);
                   }}
                   className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                    statusFilter === status
+                    statusFilter === status && takenFilter === null
                       ? 'border-primary-500 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
@@ -459,20 +488,6 @@ export default function ProductsPage() {
                 }`}
               >
                 Taken
-              </button>
-              <button
-                onClick={() => {
-                  setStatusFilter(null);
-                  setTakenFilter(false);
-                  setCurrentPage(1);
-                }}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  takenFilter === false
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Not Taken
               </button>
             </nav>
           </div>
@@ -553,7 +568,13 @@ export default function ProductsPage() {
                             <div className="border-t border-gray-100 my-1" />
                             <button
                               onClick={() => {
-                                productsApi.markAsTaken(product.id).then(() => fetchProducts());
+                                productsApi.markAsTaken(product.id).then(() => {
+                                  // Switch to "Taken" tab after marking as taken
+                                  setStatusFilter(null);
+                                  setTakenFilter(true);
+                                  setCurrentPage(1);
+                                  fetchProducts();
+                                });
                                 setOpenDropdown(null);
                               }}
                               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
