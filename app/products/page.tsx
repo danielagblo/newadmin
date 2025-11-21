@@ -249,114 +249,114 @@ export default function ProductsPage() {
 
   const columns = useMemo(() => {
     return [
-    {
-      key: 'id',
-      header: 'ID',
-    },
-    {
-      key: 'pid',
-      header: 'PID',
-    },
-    {
-      key: 'name',
-      header: 'Name',
-      render: (product: Product) => (
-        <div className="flex items-center gap-2">
-          {product.image && (
-            <div className="relative w-10 h-10 rounded overflow-hidden border border-gray-300 flex-shrink-0">
-              <Image
-                src={getImageUrl(product.image)}
-                alt={product.name}
-                fill
-                className="object-cover"
-              />
-            </div>
-          )}
-          <span className="font-medium">{product.name}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (product: Product) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          product.status === 'ACTIVE' || product.status === 'VERIFIED' ? 'bg-green-100 text-green-800' :
-          product.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-          product.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-          'bg-gray-100 text-gray-800'
-        }`}>
-          {product.status}
-        </span>
-      ),
-    },
-    {
-      key: 'is_taken',
-      header: 'Taken',
-      render: (product: Product) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-        }`}>
-          {product.is_taken ? 'Yes' : 'No'}
-        </span>
-      ),
-    },
-    {
-      key: 'owner',
-      header: 'Owner',
-      render: (product: Product) => {
-        if (!product.owner) {
-          return <span className="text-xs text-gray-400">No owner</span>;
-        }
-        
-        return (
+      {
+        key: 'id',
+        header: 'ID',
+      },
+      {
+        key: 'pid',
+        header: 'PID',
+      },
+      {
+        key: 'name',
+        header: 'Name',
+        render: (product: Product) => (
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-900">{product.owner.name}</span>
+            {product.image && (
+              <div className="relative w-10 h-10 rounded overflow-hidden border border-gray-300 flex-shrink-0">
+                <Image
+                  src={getImageUrl(product.image)}
+                  alt={product.name}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
+            <span className="font-medium">{product.name}</span>
           </div>
-        );
+        ),
       },
-    },
-    {
-      key: 'owner_verification',
-      header: 'Owner Verification',
-      render: (product: Product) => {
-        if (!product.owner) {
-          return <span className="text-xs text-gray-400">-</span>;
-        }
-        
-        // Look up owner in users list to get verification status
-        const ownerUser = users.find(u => u.id === product.owner?.id);
-        const isVerified = ownerUser?.admin_verified || false;
-        
-        return (
+      {
+        key: 'status',
+        header: 'Status',
+        render: (product: Product) => (
           <span className={`px-2 py-1 rounded text-xs ${
-            isVerified ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+            product.status === 'ACTIVE' || product.status === 'VERIFIED' ? 'bg-green-100 text-green-800' :
+            product.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+            product.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+            'bg-gray-100 text-gray-800'
           }`}>
-            {isVerified ? 'Verified' : 'Unverified'}
+            {product.status}
           </span>
-        );
+        ),
       },
-    },
-    {
-      key: 'price',
-      header: 'Price',
-      render: (product: Product) => `₵${parseFloat(product.price).toLocaleString()}`,
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      render: (product: Product) => (
-        <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
-          {product.type}
-        </span>
-      ),
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (product: Product) => format(new Date(product.created_at), 'MMM dd, yyyy'),
-    },
-  ];
+      {
+        key: 'is_taken',
+        header: 'Taken',
+        render: (product: Product) => (
+          <span className={`px-2 py-1 rounded text-xs ${
+            product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+          }`}>
+            {product.is_taken ? 'Yes' : 'No'}
+          </span>
+        ),
+      },
+      {
+        key: 'owner',
+        header: 'Owner',
+        render: (product: Product) => {
+          if (!product.owner) {
+            return <span className="text-xs text-gray-400">No owner</span>;
+          }
+          
+          return (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-900">{product.owner.name}</span>
+            </div>
+          );
+        },
+      },
+      {
+        key: 'owner_verification',
+        header: 'Owner Verification',
+        render: (product: Product) => {
+          if (!product.owner) {
+            return <span className="text-xs text-gray-400">-</span>;
+          }
+          
+          // Look up owner in users list to get verification status
+          const ownerUser = users.find(u => u.id === product.owner?.id);
+          const isVerified = ownerUser?.admin_verified || false;
+          
+          return (
+            <span className={`px-2 py-1 rounded text-xs ${
+              isVerified ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+            }`}>
+              {isVerified ? 'Verified' : 'Unverified'}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'price',
+        header: 'Price',
+        render: (product: Product) => `₵${parseFloat(product.price).toLocaleString()}`,
+      },
+      {
+        key: 'type',
+        header: 'Type',
+        render: (product: Product) => (
+          <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+            {product.type}
+          </span>
+        ),
+      },
+      {
+        key: 'created_at',
+        header: 'Created',
+        render: (product: Product) => format(new Date(product.created_at), 'MMM dd, yyyy'),
+      },
+    ];
   }, [users]);
 
   return (
