@@ -66,14 +66,16 @@ export default function ProductsPage() {
       const params: any = { page: currentPage };
       if (searchTerm) params.search = searchTerm;
       
-      // If filtering by taken status, only use is_taken filter (taken products show regardless of status)
+      // Clear filter logic: Each tab shows ONLY products matching that specific filter
       if (takenFilter !== null) {
-        params.is_taken = takenFilter;
+        // "Taken" tab: Show only taken products (regardless of status)
+        params.is_taken = true;
       } else if (statusFilter) {
-        // If filtering by status, exclude taken products (taken products only show in "Taken" tab)
+        // Status tabs: Show only products with that status AND not taken
         params.status = statusFilter;
         params.is_taken = false;
       }
+      // "All" tab: No filters applied, shows everything
       
       const data = await productsApi.list(params);
       console.log('Products fetched:', data);
@@ -210,16 +212,17 @@ export default function ProductsPage() {
       setIsModalOpen(false);
       
       // Switch to appropriate tab based on product state
-      // If product is taken, show in "Taken" tab, otherwise show in status tab
+      // If product is taken, show in "Taken" tab
+      // Otherwise, show in the status tab that matches the product's status
       if (updatedProduct.is_taken) {
         setStatusFilter(null);
         setTakenFilter(true);
+        setCurrentPage(1);
       } else {
         setStatusFilter(updatedProduct.status);
         setTakenFilter(null);
+        setCurrentPage(1);
       }
-      setCurrentPage(1);
-      fetchProducts();
     } catch (error: any) {
       console.error('Error saving product:', error);
       window.alert(error.response?.data?.detail || 'Failed to save product');
@@ -229,17 +232,19 @@ export default function ProductsPage() {
   const handleSetStatus = async (product: Product, status: string) => {
     try {
       const updatedProduct = await productsApi.setStatus(product.id, status);
-      // If product is taken, switch to "Taken" tab (taken products always show in Taken tab)
-      // Otherwise, switch to the status tab
+      // After updating status, switch to the appropriate tab
+      // If product is taken, it should show in "Taken" tab
+      // If product is not taken, it should show in the status tab
       if (updatedProduct.is_taken) {
         setStatusFilter(null);
         setTakenFilter(true);
+        setCurrentPage(1);
       } else {
+        // Switch to the status tab that matches the updated status
         setStatusFilter(status);
         setTakenFilter(null);
+        setCurrentPage(1);
       }
-      setCurrentPage(1);
-      fetchProducts();
     } catch (error) {
       console.error('Error updating status:', error);
     }
@@ -573,7 +578,6 @@ export default function ProductsPage() {
                                   setStatusFilter(null);
                                   setTakenFilter(true);
                                   setCurrentPage(1);
-                                  fetchProducts();
                                 });
                                 setOpenDropdown(null);
                               }}
