@@ -210,12 +210,19 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!formData.owner) {
+      window.alert('Please select an owner for the product');
+      return;
+    }
+    
     try {
       const submitData: any = {
         ...formData,
         category: formData.category ? parseInt(formData.category) : undefined,
         location: formData.location ? parseInt(formData.location) : undefined,
-        owner: formData.owner ? parseInt(formData.owner) : undefined,
+        owner: parseInt(formData.owner), // Owner is required, so always parse it
       };
       delete submitData.image;
 
@@ -679,9 +686,10 @@ export default function ProductsPage() {
               />
             </div>
             <Select
-              label="Owner"
+              label="Owner *"
               value={formData.owner}
               onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+              required
               options={[
                 { value: '', label: 'Select Owner' },
                 ...users.map(u => ({ value: u.id.toString(), label: u.name })),
