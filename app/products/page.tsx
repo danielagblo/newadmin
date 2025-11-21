@@ -63,32 +63,49 @@ export default function ProductsPage() {
     setLoading(true);
     setError(null);
     try {
+      // Fetch all products first, then filter client-side for accuracy
       const params: any = { page: currentPage };
       if (searchTerm) params.search = searchTerm;
-      
-      // Clear filter logic: Each tab shows ONLY products matching that specific filter
-      if (takenFilter !== null) {
-        // "Taken" tab: Show only taken products (regardless of status)
-        params.is_taken = true;
-      } else if (statusFilter) {
-        // Status tabs: Show only products with that status AND not taken
-        params.status = statusFilter;
-        params.is_taken = false;
-      }
-      // "All" tab: No filters applied, shows everything
+      // Don't send status/is_taken filters to backend - we'll filter client-side
       
       const data = await productsApi.list(params);
       console.log('Products fetched:', data);
-      // Handle both paginated and non-paginated responses
+      console.log('Current filters - statusFilter:', statusFilter, 'takenFilter:', takenFilter);
+      
+      let allProducts: Product[] = [];
       if (Array.isArray(data)) {
-        setProducts(data);
-        setTotalItems(data.length);
-        setTotalPages(1);
+        allProducts = data;
       } else {
-        setProducts(data.results || []);
-        setTotalItems(data.count || 0);
-        setTotalPages(Math.ceil((data.count || 0) / 20));
+        allProducts = data.results || [];
       }
+      
+      console.log('All products before filtering:', allProducts.length);
+      
+      // STRICT Client-side filtering - filter to show ONLY matching products
+      let filteredProducts = allProducts;
+      
+      if (takenFilter !== null && takenFilter === true) {
+        // "Taken" tab: Show ONLY taken products (regardless of status)
+        filteredProducts = allProducts.filter(p => p.is_taken === true);
+        console.log('Filtered to taken products:', filteredProducts.length);
+      } else if (statusFilter) {
+        // Status tabs: Show ONLY products with EXACT status match AND not taken
+        filteredProducts = allProducts.filter(p => {
+          const statusMatch = p.status === statusFilter;
+          const notTaken = p.is_taken === false;
+          const matches = statusMatch && notTaken;
+          if (!matches && statusMatch) {
+            console.log(`Product ${p.id} has status ${p.status} but is_taken=${p.is_taken}, excluding`);
+          }
+          return matches;
+        });
+        console.log(`Filtered to ${statusFilter} products (not taken):`, filteredProducts.length);
+      }
+      // "All" tab: No filtering, shows everything
+      
+      setProducts(filteredProducts);
+      setTotalItems(filteredProducts.length);
+      setTotalPages(Math.ceil(filteredProducts.length / 20));
     } catch (error: any) {
       console.error('Error fetching products:', error);
       const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch products';
