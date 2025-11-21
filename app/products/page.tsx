@@ -246,7 +246,7 @@ export default function ProductsPage() {
     },
     {
       key: 'owner',
-      header: 'Owner Verification',
+      header: 'Owner',
       render: (product: Product) => {
         if (!product.owner) {
           return <span className="text-xs text-gray-400">No owner</span>;
@@ -282,17 +282,45 @@ export default function ProductsPage() {
                 />
               </div>
             )}
-            <div className="flex flex-col">
-              <span className="text-xs font-medium text-gray-900">{ownerUser.name}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded inline-block w-fit mt-0.5 ${
-                ownerUser.admin_verified
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-yellow-100 text-yellow-800'
-              }`}>
-                {ownerUser.admin_verified ? 'Verified' : 'Unverified'}
-              </span>
-            </div>
+            <span className="text-xs font-medium text-gray-900">{ownerUser.name}</span>
           </div>
+        );
+      },
+    },
+    {
+      key: 'owner_verification',
+      header: 'Owner Verification',
+      render: (product: Product) => {
+        if (!product.owner) {
+          return <span className="text-xs text-gray-400">-</span>;
+        }
+        
+        // Handle case where owner is just an ID (number)
+        let ownerUser: User | null = null;
+        if (typeof product.owner === 'number') {
+          // Look up the owner from the users list
+          ownerUser = users.find(u => u.id === product.owner) || null;
+          if (!ownerUser) {
+            return <span className="text-xs text-gray-400">-</span>;
+          }
+        } else {
+          // Owner is already a User object
+          ownerUser = product.owner;
+        }
+        
+        // Check if ownerUser has the expected properties
+        if (!ownerUser || typeof ownerUser !== 'object' || !('admin_verified' in ownerUser)) {
+          return <span className="text-xs text-gray-400">-</span>;
+        }
+        
+        return (
+          <span className={`text-xs px-2 py-1 rounded inline-block ${
+            ownerUser.admin_verified
+              ? 'bg-green-100 text-green-800'
+              : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            {ownerUser.admin_verified ? 'Verified' : 'Unverified'}
+          </span>
         );
       },
     },
