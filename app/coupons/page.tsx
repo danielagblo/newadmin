@@ -74,14 +74,15 @@ export default function CouponsPage() {
 
   const handleEdit = (coupon: Coupon) => {
     setEditingCoupon(coupon);
-    // Convert discount_type from API format (PERCENT/FIXED) to form format (percent/fixed)
-    const discountType = coupon.discount_type?.toLowerCase() === 'percent' || coupon.discount_type === 'PERCENT' 
-      ? 'percent' 
-      : 'fixed';
+    // Convert discount_type - handle both API format (PERCENT/FIXED) and form format (percent/fixed)
+    const discountTypeValue = (coupon as any).discount_type || coupon.discount_type;
+    const discountType = typeof discountTypeValue === 'string' 
+      ? discountTypeValue.toLowerCase() === 'percent' ? 'percent' : 'fixed'
+      : coupon.discount_type;
     
     setFormData({
       code: coupon.code,
-      description: 'description' in coupon ? (coupon as any).description || '' : '',
+      description: coupon.description || '',
       discount_type: discountType,
       discount_value: coupon.discount_value,
       max_uses: coupon.max_uses?.toString() || '',
