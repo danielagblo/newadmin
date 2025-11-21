@@ -178,7 +178,8 @@ export interface Subscription {
   multiplier?: number;
   duration_days: number;
   description?: string;
-  features?: string[];
+  // Features can be provided as an array or a comma-separated string from the API
+  features?: string | string[];
   max_ads?: number;
   max_products?: number;
   is_active: boolean;

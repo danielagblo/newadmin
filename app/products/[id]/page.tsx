@@ -81,9 +81,9 @@ export default function ProductDetailPage() {
                   />
                 </div>
               )}
-              {product.images && product.images.length > 0 && (
+              {((product as any).images as { image: string }[])?.length > 0 && (
                 <div className="grid grid-cols-4 gap-2 mt-4">
-                  {product.images.map((img, idx) => (
+                  {((product as any).images as { image: string }[]).map((img, idx) => (
                     <div key={idx} className="relative w-full h-24 rounded overflow-hidden">
                       <Image
                         src={getImageUrl(img.image)}
@@ -216,11 +216,11 @@ export default function ProductDetailPage() {
             <p className="text-gray-700 whitespace-pre-wrap">{product.description}</p>
           </div>
 
-          {product.product_features && product.product_features.length > 0 && (
+          {((product as any).product_features && (product as any).product_features.length > 0) && (
             <div className="mt-6 pt-6 border-t">
               <h2 className="text-lg font-semibold mb-4">Features</h2>
               <div className="grid grid-cols-2 gap-4">
-                {product.product_features.map((pf, idx) => (
+                {((product as any).product_features as { feature: { name: string }; value: string }[]).map((pf, idx) => (
                   <div key={idx} className="border rounded p-3">
                     <p className="text-sm font-medium text-gray-700">{pf.feature.name}</p>
                     <p className="text-sm text-gray-600 mt-1">{pf.value}</p>

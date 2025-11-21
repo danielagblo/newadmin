@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { subscriptionsApi } from '@/lib/api/subscriptions';
 import { Subscription, SUBSCRIPTION_TIERS } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Crown, Briefcase, Sparkles, Check } from 'lucide-react';
+import { Briefcase, Check, Crown, Plus, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 export default function SubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -66,10 +66,10 @@ export default function SubscriptionsPage() {
       console.error('Error fetching subscriptions:', error);
       console.error('Error response:', error?.response);
       console.error('Error status:', error?.response?.status);
-      
+
       let errorMessage = 'Failed to fetch subscriptions';
       let errorDetails = '';
-      
+
       if (error?.response?.status === 404) {
         errorMessage = 'Subscriptions endpoint not found (404)';
         errorDetails = `The subscriptions API endpoint does not exist on your Django backend.\n\n` +
@@ -83,15 +83,15 @@ export default function SubscriptionsPage() {
         errorDetails = 'You may not have permission to view subscriptions.';
       } else if (error?.response?.data) {
         errorMessage = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorDetails = error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
         errorMessage = 'Error';
         errorDetails = error.message;
       }
-      
+
       setError(`${errorMessage}\n\n${errorDetails}`);
       setSubscriptions([]);
     } finally {
@@ -125,11 +125,11 @@ export default function SubscriptionsPage() {
       tier: subscription.tier,
       price: subscription.price,
       original_price: subscription.original_price || '',
-      multiplier: subscription.multiplier || '',
+      multiplier: String(subscription.multiplier ?? ''),
       discount_percentage: subscription.discount_percentage || 0,
       duration_days: subscription.duration_days,
       description: subscription.description || '',
-      features: subscription.features || '',
+      features: Array.isArray(subscription.features) ? subscription.features.join(', ') : (subscription.features || ''),
       max_ads: subscription.max_ads || 0,
       max_products: subscription.max_products || 0,
       is_active: subscription.is_active,
@@ -153,15 +153,19 @@ export default function SubscriptionsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const submitData = {
-        ...formData,
+      const submitData: any = {
+        name: formData.name,
+        tier: formData.tier,
+        price: formData.price,
         original_price: formData.original_price || undefined,
-        multiplier: formData.multiplier || undefined,
+        multiplier: formData.multiplier ? parseFloat(formData.multiplier) : undefined,
         discount_percentage: formData.discount_percentage || undefined,
+        duration_days: formData.duration_days,
+        description: formData.description || undefined,
+        features: formData.features || undefined,
         max_ads: formData.max_ads || undefined,
         max_products: formData.max_products || undefined,
-        features: formData.features || undefined,
-        description: formData.description || undefined,
+        is_active: formData.is_active,
       };
       if (editingSubscription) {
         await subscriptionsApi.update(editingSubscription.id, submitData);
@@ -242,9 +246,8 @@ export default function SubscriptionsPage() {
       key: 'is_active',
       header: 'Status',
       render: (sub: Subscription) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          sub.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${sub.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
           {sub.is_active ? 'Active' : 'Inactive'}
         </span>
       ),
@@ -302,7 +305,11 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {basicSubscriptions.length > 0 ? (
                 basicSubscriptions.map((sub) => {
-                  const features = sub.features ? sub.features.split(',').map(f => f.trim()) : [];
+                  const features = Array.isArray(sub.features)
+                    ? sub.features
+                    : (typeof sub.features === 'string'
+                      ? sub.features.split(',').map((f: string) => f.trim())
+                      : []);
                   return (
                     <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
                       <div className="font-semibold text-gray-900 mb-2">{sub.name}</div>
@@ -314,7 +321,7 @@ export default function SubscriptionsPage() {
                       </div>
                       {features.length > 0 && (
                         <div className="space-y-1 mt-3">
-                          {features.map((feature, idx) => (
+                          {features.map((feature: string, idx: number) => (
                             <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
                               <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                               <span>{feature}</span>
@@ -345,7 +352,11 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {businessSubscriptions.length > 0 ? (
                 businessSubscriptions.map((sub) => {
-                  const features = sub.features ? sub.features.split(',').map(f => f.trim()) : [];
+                  const features = Array.isArray(sub.features)
+                    ? sub.features
+                    : (typeof sub.features === 'string'
+                      ? sub.features.split(',').map((f: string) => f.trim())
+                      : []);
                   return (
                     <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
                       <div className="flex items-center justify-between mb-2">
@@ -364,7 +375,7 @@ export default function SubscriptionsPage() {
                       </div>
                       {features.length > 0 && (
                         <div className="space-y-1 mt-3">
-                          {features.map((feature, idx) => (
+                          {features.map((feature: string, idx: number) => (
                             <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
                               <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                               <span>{feature}</span>
@@ -392,7 +403,11 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {platinumSubscriptions.length > 0 ? (
                 platinumSubscriptions.map((sub) => {
-                  const features = sub.features ? sub.features.split(',').map(f => f.trim()) : [];
+                  const features = Array.isArray(sub.features)
+                    ? sub.features
+                    : (typeof sub.features === 'string'
+                      ? sub.features.split(',').map((f: string) => f.trim())
+                      : []);
                   return (
                     <div key={sub.id} className="border-b border-gray-200 pb-4 last:border-0">
                       <div className="flex items-center justify-between mb-2">
@@ -411,7 +426,7 @@ export default function SubscriptionsPage() {
                       </div>
                       {features.length > 0 && (
                         <div className="space-y-1 mt-3">
-                          {features.map((feature, idx) => (
+                          {features.map((feature: string, idx: number) => (
                             <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
                               <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
                               <span>{feature}</span>
