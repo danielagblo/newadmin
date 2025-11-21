@@ -1,5 +1,5 @@
 import apiClient from './config';
-import { Coupon, CreateCouponForm, CouponRedemption } from '../types';
+import { Coupon, CreateCouponForm } from '../types';
 
 export const couponsApi = {
   list: async (params?: {
