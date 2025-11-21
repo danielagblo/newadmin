@@ -150,12 +150,15 @@ export default function ProductsPage() {
       }
     }
     
+    // Convert VERIFIED status to ACTIVE since VERIFIED is no longer a valid status option
+    const status = product.status === 'VERIFIED' ? 'ACTIVE' : product.status;
+    
     setFormData({
       name: product.name,
       category: product.category?.toString() || '',
       location: product.location?.id?.toString() || '',
       type: product.type,
-      status: product.status,
+      status: status as 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED',
       description: product.description,
       price: product.price,
       duration: product.duration,
