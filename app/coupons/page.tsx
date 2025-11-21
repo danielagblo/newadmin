@@ -81,7 +81,7 @@ export default function CouponsPage() {
     
     setFormData({
       code: coupon.code,
-      description: coupon.description || '',
+      description: 'description' in coupon ? (coupon as any).description || '' : '',
       discount_type: discountType,
       discount_value: coupon.discount_value,
       max_uses: coupon.max_uses?.toString() || '',
