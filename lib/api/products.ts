@@ -1,5 +1,7 @@
 import apiClient from './config';
-import { Product, CreateProductForm, PaginatedResponse } from '../types';
+import { Product, PaginatedResponse } from '../types';
+
+type CreateProductForm = Record<string, any>;
 
 export const productsApi = {
   list: async (params?: {

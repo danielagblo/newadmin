@@ -459,39 +459,24 @@ export default function ProductsPage() {
                 ...users.map(u => ({ value: u.id.toString(), label: u.name })),
               ]}
             />
-            {/* Show existing images if editing */}
-            {editingProduct && editingProduct.images && editingProduct.images.length > 0 && (
+            {/* Show existing image if editing */}
+            {editingProduct && editingProduct.image && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Product Images
+                  Product Image
                 </label>
                 <div className="grid grid-cols-4 gap-4">
-                  {editingProduct.image && (
-                    <div className="relative group">
-                      <div className="relative w-full h-32 rounded-lg overflow-hidden border border-gray-200">
-                        <Image
-                          src={getImageUrl(editingProduct.image)}
-                          alt={editingProduct.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1 text-center">Main Image</p>
+                  <div className="relative group">
+                    <div className="relative w-full h-32 rounded-lg overflow-hidden border border-gray-200">
+                      <Image
+                        src={getImageUrl(editingProduct.image)}
+                        alt={editingProduct.name}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
-                  )}
-                  {editingProduct.images.map((img, idx) => (
-                    <div key={img.id} className="relative group">
-                      <div className="relative w-full h-32 rounded-lg overflow-hidden border border-gray-200">
-                        <Image
-                          src={getImageUrl(img.image)}
-                          alt={`${editingProduct.name} ${idx + 1}`}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1 text-center">Image {idx + 1}</p>
-                    </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-1 text-center">Main Image</p>
+                  </div>
                 </div>
               </div>
             )}
