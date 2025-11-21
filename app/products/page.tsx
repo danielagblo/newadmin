@@ -40,7 +40,7 @@ export default function ProductsPage() {
     category: string;
     location: string;
     type: 'SALE' | 'PAYLATER' | 'RENT';
-    status: 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
+    status: 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED' | 'TAKEN';
     description: string;
     price: string;
     duration: string;
@@ -89,17 +89,23 @@ export default function ProductsPage() {
         filteredProducts = allProducts.filter(p => p.is_taken === true);
         console.log('Filtered to taken products:', filteredProducts.length);
       } else if (statusFilter) {
-        // Status tabs: Show ONLY products with EXACT status match AND not taken
-        filteredProducts = allProducts.filter(p => {
-          const statusMatch = p.status === statusFilter;
-          const notTaken = p.is_taken === false;
-          const matches = statusMatch && notTaken;
-          if (!matches && statusMatch) {
-            console.log(`Product ${p.id} has status ${p.status} but is_taken=${p.is_taken}, excluding`);
-          }
-          return matches;
-        });
-        console.log(`Filtered to ${statusFilter} products (not taken):`, filteredProducts.length);
+        if (statusFilter === 'TAKEN') {
+          // "TAKEN" status tab: Show products with TAKEN status OR is_taken=true
+          filteredProducts = allProducts.filter(p => p.status === 'TAKEN' || p.is_taken === true);
+          console.log('Filtered to TAKEN status products:', filteredProducts.length);
+        } else {
+          // Other status tabs: Show ONLY products with EXACT status match AND not taken
+          filteredProducts = allProducts.filter(p => {
+            const statusMatch = p.status === statusFilter;
+            const notTaken = p.is_taken === false;
+            const matches = statusMatch && notTaken;
+            if (!matches && statusMatch) {
+              console.log(`Product ${p.id} has status ${p.status} but is_taken=${p.is_taken}, excluding`);
+            }
+            return matches;
+          });
+          console.log(`Filtered to ${statusFilter} products (not taken):`, filteredProducts.length);
+        }
       }
       // "All" tab: No filtering, shows everything
       
@@ -182,14 +188,18 @@ export default function ProductsPage() {
     }
     
     // Convert VERIFIED status to ACTIVE since VERIFIED is no longer a valid status option
-    const status = product.status === 'VERIFIED' ? 'ACTIVE' : product.status;
+    // If product is taken but status is not TAKEN, set status to TAKEN
+    let status = product.status === 'VERIFIED' ? 'ACTIVE' : product.status;
+    if (product.is_taken && status !== 'TAKEN') {
+      status = 'TAKEN';
+    }
     
     setFormData({
       name: product.name,
       category: product.category?.toString() || '',
       location: product.location?.id?.toString() || '',
       type: product.type,
-      status: status as 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED',
+      status: status as 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED' | 'TAKEN',
       description: product.description,
       price: product.price,
       duration: product.duration,
@@ -223,17 +233,29 @@ export default function ProductsPage() {
       let updatedProduct: Product;
       if (editingProduct) {
         updatedProduct = await productsApi.update(editingProduct.id, submitData);
+        // If status is TAKEN, also mark as taken
+        if (formData.status === 'TAKEN') {
+          await productsApi.markAsTaken(editingProduct.id);
+          // Refetch to get updated product
+          updatedProduct = await productsApi.get(editingProduct.id);
+        }
       } else {
         updatedProduct = await productsApi.create(submitData);
+        // If status is TAKEN, also mark as taken
+        if (formData.status === 'TAKEN') {
+          await productsApi.markAsTaken(updatedProduct.id);
+          // Refetch to get updated product
+          updatedProduct = await productsApi.get(updatedProduct.id);
+        }
       }
       setIsModalOpen(false);
       
       // Switch to appropriate tab based on product state
-      // If product is taken, show in "Taken" tab
+      // If product status is TAKEN or is_taken is true, show in TAKEN status tab
       // Otherwise, show in the status tab that matches the product's status
-      if (updatedProduct.is_taken) {
-        setStatusFilter(null);
-        setTakenFilter(true);
+      if (updatedProduct.status === 'TAKEN' || updatedProduct.is_taken) {
+        setStatusFilter('TAKEN');
+        setTakenFilter(null);
         setCurrentPage(1);
       } else {
         setStatusFilter(updatedProduct.status);
@@ -248,20 +270,36 @@ export default function ProductsPage() {
 
   const handleSetStatus = async (product: Product, status: string) => {
     try {
-      const updatedProduct = await productsApi.setStatus(product.id, status);
-      // After updating status, switch to the appropriate tab
-      // If product is taken, it should show in "Taken" tab
-      // If product is not taken, it should show in the status tab
-      if (updatedProduct.is_taken) {
-        setStatusFilter(null);
-        setTakenFilter(true);
-        setCurrentPage(1);
+      // If setting status to TAKEN, also mark as taken
+      // If setting status to something else and product was taken, mark as not taken
+      if (status === 'TAKEN') {
+        // First mark as taken, then set status
+        await productsApi.markAsTaken(product.id);
+        await productsApi.setStatus(product.id, status);
+      } else if (product.is_taken && status !== 'TAKEN') {
+        // If product was taken and we're changing to a different status, we need to handle this
+        // The API might need a way to unmark as taken, or we just set the status
+        await productsApi.setStatus(product.id, status);
+      } else {
+        await productsApi.setStatus(product.id, status);
+      }
+      
+      const updatedProduct = await productsApi.get(product.id);
+      
+      // Switch to the appropriate tab based on status
+      if (status === 'TAKEN') {
+        setStatusFilter('TAKEN');
+        setTakenFilter(null);
+      } else if (updatedProduct.is_taken) {
+        // If still taken but status changed, show in TAKEN status tab
+        setStatusFilter('TAKEN');
+        setTakenFilter(null);
       } else {
         // Switch to the status tab that matches the updated status
         setStatusFilter(status);
         setTakenFilter(null);
-        setCurrentPage(1);
       }
+      setCurrentPage(1);
     } catch (error) {
       console.error('Error updating status:', error);
     }
@@ -442,7 +480,8 @@ export default function ProductsPage() {
               )}
               {statusFilter && takenFilter === null && (
                 <span className="inline-block mr-2">
-                  Showing: <span className="font-medium">{statusFilter} Products</span> (excluding taken)
+                  Showing: <span className="font-medium">{statusFilter} Products</span>
+                  {statusFilter !== 'TAKEN' && <span className="text-gray-500"> (excluding taken)</span>}
                 </span>
               )}
               {!statusFilter && takenFilter === null && (

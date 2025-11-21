@@ -43,7 +43,7 @@ export interface Product {
   category?: number;
   location?: Location;
   type: 'SALE' | 'PAYLATER' | 'RENT';
-  status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
+  status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED' | 'TAKEN';
   is_taken: boolean;
   description: string;
   price: string;
@@ -333,7 +333,7 @@ export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
 export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
 
 // Product Status Constants
-export const PRODUCT_STATUSES = ['ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
+export const PRODUCT_STATUSES = ['ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED', 'TAKEN'] as const;
 
 // Region Constants
 export const REGIONS = [
