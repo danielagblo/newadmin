@@ -247,7 +247,8 @@ export default function ProductsPage() {
     }
   };
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => {
+    return [
     {
       key: 'id',
       header: 'ID',
@@ -355,7 +356,8 @@ export default function ProductsPage() {
       header: 'Created',
       render: (product: Product) => format(new Date(product.created_at), 'MMM dd, yyyy'),
     },
-  ], [users]);
+  ];
+  }, [users]);
 
   return (
     <Layout>
