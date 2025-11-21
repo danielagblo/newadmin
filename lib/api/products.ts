@@ -13,12 +13,12 @@ export const productsApi = {
     status?: string;
     is_taken?: boolean;
   }): Promise<PaginatedResponse<Product>> => {
-    // Try to request owner expansion - common patterns: expand, include, fields
+    // Request owner expansion - try common API patterns
     const requestParams: any = { ...params };
-    // Some APIs use these parameters to expand related objects
-    // Uncomment if your API supports one of these:
-    // requestParams.expand = 'owner';
-    // requestParams.include = 'owner';
+    // Try multiple expansion patterns that different APIs might use
+    requestParams.expand = 'owner';
+    requestParams.include = 'owner';
+    // Some APIs use fields parameter
     // requestParams.fields = '*,owner.*';
     
     const response = await apiClient.get<PaginatedResponse<Product>>('/products/', { 

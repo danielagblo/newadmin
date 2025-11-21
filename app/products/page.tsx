@@ -98,9 +98,24 @@ export default function ProductsPage() {
       }
       // "All" tab: No filtering, shows everything
       
-      setProducts(filteredProducts);
-      setTotalItems(filteredProducts.length);
-      setTotalPages(Math.ceil(filteredProducts.length / 20));
+      // Fetch owner details for products that only have owner IDs
+      const productsWithOwners = await Promise.all(
+        filteredProducts.map(async (product) => {
+          // If owner is just an ID and not a User object, try to fetch it
+          if (typeof product.owner === 'number') {
+            const ownerUser = users.find(u => u.id === product.owner);
+            if (ownerUser) {
+              // Replace the ID with the full User object
+              return { ...product, owner: ownerUser };
+            }
+          }
+          return product;
+        })
+      );
+      
+      setProducts(productsWithOwners);
+      setTotalItems(productsWithOwners.length);
+      setTotalPages(Math.ceil(productsWithOwners.length / 20));
     } catch (error: any) {
       console.error('Error fetching products:', error);
       const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch products';
@@ -111,7 +126,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, statusFilter]);
+  }, [currentPage, searchTerm, statusFilter, users]);
 
   const fetchCategories = useCallback(async () => {
     try {
