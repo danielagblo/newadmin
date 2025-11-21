@@ -1,5 +1,5 @@
 import apiClient from './config';
-import { Location, CreateLocationForm } from '../types';
+import { Location } from '../types';
 
 export const locationsApi = {
   list: async (params?: { region?: string; name?: string; search?: string }): Promise<Location[]> => {
@@ -92,12 +92,12 @@ export const locationsApi = {
     return response.data;
   },
 
-  create: async (data: CreateLocationForm): Promise<Location> => {
+  create: async (data: Partial<Location>): Promise<Location> => {
     const response = await apiClient.post<Location>('/locations/', data);
     return response.data;
   },
 
-  update: async (id: number, data: Partial<CreateLocationForm>): Promise<Location> => {
+  update: async (id: number, data: Partial<Location>): Promise<Location> => {
     const response = await apiClient.put<Location>(`/locations/${id}/`, data);
     return response.data;
   },
