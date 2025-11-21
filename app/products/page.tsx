@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
@@ -247,7 +247,7 @@ export default function ProductsPage() {
     }
   };
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       key: 'id',
       header: 'ID',
@@ -355,7 +355,7 @@ export default function ProductsPage() {
       header: 'Created',
       render: (product: Product) => format(new Date(product.created_at), 'MMM dd, yyyy'),
     },
-  ];
+  ], [users]);
 
   return (
     <Layout>
