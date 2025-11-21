@@ -240,13 +240,14 @@ export default function FeedbackPage() {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-48"
-            >
-              <option value="all">All Status</option>
-              <option value="PENDING">Pending</option>
-              <option value="READ">Read</option>
-              <option value="RESOLVED">Resolved</option>
-              <option value="ARCHIVED">Archived</option>
-            </Select>
+              options={[
+                { value: 'all', label: 'All Status' },
+                { value: 'PENDING', label: 'Pending' },
+                { value: 'READ', label: 'Read' },
+                { value: 'RESOLVED', label: 'Resolved' },
+                { value: 'ARCHIVED', label: 'Archived' },
+              ]}
+            />
             <div className="text-sm text-gray-600">
               Total: {feedbacks.length} feedback{feedbacks.length !== 1 ? 's' : ''}
             </div>
