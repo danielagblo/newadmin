@@ -138,12 +138,16 @@ export interface Feature {
 export interface Coupon {
   id: number;
   code: string;
+  description?: string;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
   min_purchase?: string;
   max_discount?: string;
-  usage_limit?: number;
+  usage_limit?: number; // original API name for overall usage limit
+  max_uses?: number; // optional alias used by frontend (max uses)
+  per_user_limit?: number; // optional per-user limit
   used_count: number;
+  remaining_uses?: number; // optional computed field used in UI
   is_active: boolean;
   valid_from: string;
   valid_until: string;
