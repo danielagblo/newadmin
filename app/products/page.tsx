@@ -33,6 +33,8 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null); // null = all, or specific status
+  const [takenFilter, setTakenFilter] = useState<boolean | null>(null); // null = all, true = taken, false = not taken
   const [formData, setFormData] = useState<{
     name: string;
     category: string;
@@ -63,6 +65,9 @@ export default function ProductsPage() {
     try {
       const params: any = { page: currentPage };
       if (searchTerm) params.search = searchTerm;
+      if (statusFilter) params.status = statusFilter;
+      if (takenFilter !== null) params.is_taken = takenFilter;
+      
       const data = await productsApi.list(params);
       console.log('Products fetched:', data);
       // Handle both paginated and non-paginated responses
@@ -85,7 +90,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm]);
+  }, [currentPage, searchTerm, statusFilter, takenFilter]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -390,9 +395,88 @@ export default function ProductsPage() {
         <div className="bg-white rounded-lg shadow p-6">
           {!error && (
             <div className="mb-4 text-sm text-gray-600">
-              Total products: {totalItems} | Page {currentPage} of {totalPages}
+              {statusFilter && (
+                <span className="inline-block mr-2">
+                  Filter: <span className="font-medium">{statusFilter}</span>
+                </span>
+              )}
+              {takenFilter !== null && (
+                <span className="inline-block mr-2">
+                  Filter: <span className="font-medium">{takenFilter ? 'Taken' : 'Not Taken'}</span>
+                </span>
+              )}
+              {!statusFilter && takenFilter === null && (
+                <span className="inline-block mr-2">Showing all products</span>
+              )}
+              | Total: {totalItems} | Page {currentPage} of {totalPages}
             </div>
           )}
+          
+          {/* Filter Tabs */}
+          <div className="mb-4 border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8 overflow-x-auto">
+              <button
+                onClick={() => {
+                  setStatusFilter(null);
+                  setTakenFilter(null);
+                  setCurrentPage(1);
+                }}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  statusFilter === null && takenFilter === null
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                All
+              </button>
+              {PRODUCT_STATUSES.map((status) => (
+                <button
+                  key={status}
+                  onClick={() => {
+                    setStatusFilter(status);
+                    setTakenFilter(null);
+                    setCurrentPage(1);
+                  }}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                    statusFilter === status
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  setStatusFilter(null);
+                  setTakenFilter(true);
+                  setCurrentPage(1);
+                }}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  takenFilter === true
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Taken
+              </button>
+              <button
+                onClick={() => {
+                  setStatusFilter(null);
+                  setTakenFilter(false);
+                  setCurrentPage(1);
+                }}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  takenFilter === false
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Not Taken
+              </button>
+            </nav>
+          </div>
+
           <div className="mb-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />

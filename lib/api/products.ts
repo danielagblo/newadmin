@@ -10,6 +10,8 @@ export const productsApi = {
     pid?: string;
     search?: string;
     ordering?: string;
+    status?: string;
+    is_taken?: boolean;
   }): Promise<PaginatedResponse<Product>> => {
     // Try to request owner expansion - common patterns: expand, include, fields
     const requestParams: any = { ...params };
