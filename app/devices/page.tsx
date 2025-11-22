@@ -53,23 +53,33 @@ export default function DevicesPage() {
 
     setAdding(true);
     try {
-      const payload: { token: string; user_id?: number } = { token: newToken.trim() };
-      if (selectedUser !== '') payload.user_id = selectedUser as number;
-      console.log('Creating device payload (user_id):', payload);
-      const created = await devicesApi.create(payload as any);
-      console.log('Created device response:', created);
-      // If backend returned a different user than selected, surface a clear error so admin can act.
-      if (payload.user_id !== undefined && created.user !== payload.user_id) {
-        const msg = `Device was created with user=${created.user} but you requested user=${payload.user_id}. This likely means the backend ignored the provided user id or your token lacks admin permissions.`;
-        console.error(msg, { requested: payload.user_id, created: created.user, createdResponse: created });
-        // Show a visible alert so the admin notices immediately
-        window.alert(msg);
+      const payload: { token: string; user_id: number } = {
+        token: newToken.trim(),
+        user_id: selectedUser === '' ? (null as any) : (selectedUser as number),
+      };
+
+      // Ensure we provide a user_id (frontend policy: require user_id)
+      if (payload.user_id === null) {
+        window.alert('Please select a user for this device (user_id is required).');
+        return;
       }
+
+      console.log('Saving FCM token payload:', payload);
+
+      // Call the saveFcmToken endpoint which returns a status object on success
+      const resp = await devicesApi.saveFcmToken(payload);
+      console.log('saveFcmToken response:', resp);
+
+      // Refresh device list after adding
+      await fetchDevices();
       setNewToken('');
-      fetchDevices();
+      setSelectedUser('');
+      window.alert('Device saved successfully');
     } catch (error) {
       console.error('Error adding device:', error);
-      window.alert('Failed to add device');
+      // If server returned a response body, show it to help debugging
+      const errMsg = (error as any)?.response?.data || (error as any)?.message || String(error);
+      window.alert('Failed to add device: ' + JSON.stringify(errMsg));
     } finally {
       setAdding(false);
     }

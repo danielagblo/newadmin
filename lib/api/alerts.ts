@@ -93,6 +93,7 @@ export const alertsApi = {
   },
 
   create: async (data: { title: string; body: string; kind?: string; is_read?: boolean; user?: number }): Promise<Alert> => {
+    // Only send the allowed fields to the backend: title, body, kind, is_read, and optional user id
     const payload: any = { title: data.title, body: data.body };
     if (data.kind) payload.kind = data.kind;
     if (typeof data.is_read !== 'undefined') payload.is_read = !!data.is_read;
@@ -102,9 +103,22 @@ export const alertsApi = {
 
     for (const endpoint of endpoints) {
       try {
+        // Log payload for debugging server 500s
+        if (typeof window !== 'undefined') {
+          console.debug('[alertsApi.create] POST', endpoint, 'payload:', payload);
+        }
         const resp = await apiClient.post<Alert>(endpoint, payload);
         return resp.data;
       } catch (err: any) {
+        // Log server error body/status to help diagnose 500s (dev mode shows HTML)
+        try {
+          const status = err.response?.status;
+          const data = err.response?.data;
+          console.error('[alertsApi.create] error from', endpoint, 'status=', status, 'data=', data);
+        } catch (logErr) {
+          console.error('[alertsApi.create] error logging failed', String(logErr));
+        }
+
         if (err.response && [404, 405].includes(err.response.status)) continue;
         if (err.response && err.response.data) throw new Error(`Create alert failed: ${JSON.stringify(err.response.data)}`);
         throw err;
@@ -112,9 +126,17 @@ export const alertsApi = {
     }
 
     try {
+      if (typeof window !== 'undefined') {
+        console.debug('[alertsApi.create] POST', '/alerts/ (notificationsClient)', 'payload:', payload);
+      }
       const resp = await notificationsClient.post<Alert>('/alerts/', payload);
       return resp.data;
     } catch (err: any) {
+      try {
+        console.error('[alertsApi.create] notificationsClient error', err.response?.status, err.response?.data);
+      } catch (logErr) {
+        console.error('[alertsApi.create] notificationsClient error logging failed', String(logErr));
+      }
       throw new Error(`Could not create alert. Last error: ${err.response?.status || err.message}`);
     }
   },

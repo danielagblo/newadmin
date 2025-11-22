@@ -264,6 +264,16 @@ export interface Alert {
   created_at: string;
 }
 
+// Account Delete Request Types
+export interface AccountDeleteRequest {
+  id: number;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  admin_comment?: string | null;
+  created_at: string;
+  processed_at?: string | null;
+}
+
 // FCM Device Types
 export interface FCMDevice {
   id: number;

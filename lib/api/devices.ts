@@ -67,7 +67,7 @@ export const devicesApi = {
    * POST /notifications/save-fcm-token/
    * Accepts payload: { token: string, user_id?: number }
    */
-  saveFcmToken: async (payload: { token: string; user_id?: number }): Promise<any> => {
+  saveFcmToken: async (payload: { token: string; user_id: number }): Promise<any> => {
     // Require frontend to provide `user_id`. Do not fall back to localStorage.
     if (typeof payload.user_id === 'undefined' || payload.user_id === null) {
       const msg = 'saveFcmToken failed: payload.user_id is required. The frontend must provide the user id.';

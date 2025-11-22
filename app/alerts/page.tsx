@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Textarea';
 import { alertsApi } from '@/lib/api/alerts';
 import { usersApi } from '@/lib/api/users';
 import { Alert, User } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Send, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Send } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -55,9 +55,9 @@ export default function AlertsPage() {
         userField: alertsArray[0]?.user,
         userType: typeof alertsArray[0]?.user,
       } : 'No alerts');
-      
+
       setAlerts(alertsArray);
-      
+
       if (alertsArray.length === 0) {
         console.warn('⚠️ No alerts found. If you added alerts in Django admin, they might not be showing because:');
         console.warn('1. The endpoint is returning filtered results (only current user\'s alerts)');
@@ -72,10 +72,10 @@ export default function AlertsPage() {
       console.error('Error fetching alerts:', error);
       console.error('Error response:', error?.response);
       console.error('Error status:', error?.response?.status);
-      
+
       let errorMessage = 'Failed to fetch alerts';
       let errorDetails = '';
-      
+
       if (error?.response?.status === 404) {
         errorMessage = 'Alerts endpoint not found (404)';
         errorDetails = `The alerts API endpoint does not exist on your Django backend.\n\n` +
@@ -99,15 +99,15 @@ export default function AlertsPage() {
         errorDetails = 'Cannot connect to the API. Please check your connection.';
       } else if (error?.response?.data) {
         errorMessage = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorDetails = error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
         errorMessage = 'Error';
         errorDetails = error.message;
       }
-      
+
       setError(`${errorMessage}\n\n${errorDetails}`);
       setAlerts([]);
     } finally {
@@ -199,17 +199,17 @@ export default function AlertsPage() {
         sendToAll: false,
       });
       fetchAlerts();
-      const userCount = notificationForm.sendToAll 
-        ? 'all users' 
+      const userCount = notificationForm.sendToAll
+        ? 'all users'
         : `${notificationForm.userIds.length} user(s)`;
       window.alert(`Push notification sent successfully to ${userCount}!`);
     } catch (error: any) {
       console.error('Error sending notification:', error);
       console.error('Error response:', error?.response);
-      
+
       let errorMsg = 'Failed to send notification';
       let errorDetails = '';
-      
+
       if (error?.response?.status === 405) {
         errorMsg = 'Method POST not allowed';
         const allowedMethods = error?.response?.headers?.['allow'];
@@ -231,15 +231,15 @@ export default function AlertsPage() {
         errorDetails = 'You may not have permission to send notifications.';
       } else if (error?.response?.data) {
         errorMsg = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorDetails = error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
         errorMsg = 'Error';
         errorDetails = error.message;
       }
-      
+
       // Show detailed error in alert
       const fullErrorMsg = errorDetails ? `${errorMsg}\n\n${errorDetails}` : errorMsg;
       window.alert(fullErrorMsg);
@@ -301,9 +301,8 @@ export default function AlertsPage() {
       key: 'is_read',
       header: 'Status',
       render: (alert: Alert) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          alert.is_read ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${alert.is_read ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'
+          }`}>
           {alert.is_read ? 'Read' : 'Unread'}
         </span>
       ),
@@ -341,8 +340,8 @@ export default function AlertsPage() {
             <div className="flex items-start">
               <div className="flex-1">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> If the &quot;Send Notification&quot; button doesn&apos;t work, 
-                  the REST API endpoint for creating alerts may not exist. 
+                  <strong>Note:</strong> If the &quot;Send Notification&quot; button doesn&apos;t work,
+                  the REST API endpoint for creating alerts may not exist.
                   You can create notifications in Django admin and they will appear here.
                 </p>
               </div>
@@ -448,7 +447,7 @@ export default function AlertsPage() {
               <label className="block text-sm font-medium text-gray-700">
                 Send To
               </label>
-              
+
               <div className="space-y-2">
                 <label className="flex items-center space-x-2">
                   <input
@@ -472,54 +471,54 @@ export default function AlertsPage() {
                       // Group users by verification status and new users
                       const now = new Date();
                       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                      
+
                       // Verified users who have submitted ads (active_ads > 0 OR taken_ads > 0)
-                      const verifiedWithAds = users.filter(u => 
-                        u.admin_verified && 
+                      const verifiedWithAds = users.filter(u =>
+                        u.admin_verified &&
                         new Date(u.created_at) <= thirtyDaysAgo &&
                         ((u.active_ads && u.active_ads > 0) || (u.taken_ads && u.taken_ads > 0))
                       );
-                      
+
                       // Verified users who haven't submitted any ads
-                      const verifiedNoAds = users.filter(u => 
-                        u.admin_verified && 
+                      const verifiedNoAds = users.filter(u =>
+                        u.admin_verified &&
                         new Date(u.created_at) <= thirtyDaysAgo &&
                         (!u.active_ads || u.active_ads === 0) &&
                         (!u.taken_ads || u.taken_ads === 0)
                       );
-                      
+
                       const unverifiedUsers = users.filter(u => !u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo);
                       const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo);
                       const inactiveUsers = users.filter(u => !u.is_active);
-                      
+
                       // User Level Groups
                       const diamondUsers = users.filter(u => u.level === 'DIAMOND' && u.is_active);
                       const goldUsers = users.filter(u => u.level === 'GOLD' && u.is_active);
                       const silverUsers = users.filter(u => u.level === 'SILVER' && u.is_active);
-                      
+
                       // Business Users
                       const businessUsers = users.filter(u => u.business_name && u.business_name.trim() !== '' && u.is_active);
-                      
+
                       // Phone/Email Verified
                       const phoneVerifiedUsers = users.filter(u => u.phone_verified && u.is_active);
                       const emailVerifiedUsers = users.filter(u => u.email_verified && u.is_active);
                       const fullyVerifiedUsers = users.filter(u => u.phone_verified && u.email_verified && u.is_active);
-                      
+
                       // Staff/Admin Users
                       const staffUsers = users.filter(u => (u.is_staff || u.is_superuser) && u.is_active);
-                      
+
                       // App Users
                       const appUsers = users.filter(u => u.created_from_app && u.is_active);
-                      
+
                       // Users with Referral Activity
                       const usersWithReferrals = users.filter(u => u.referral_points > 0 && u.is_active);
-                      
+
                       // Top 100 Users with Most Active Ads
                       const topActiveAdsUsers = users
                         .filter(u => u.is_active && u.active_ads && u.active_ads > 0)
                         .sort((a, b) => (b.active_ads || 0) - (a.active_ads || 0))
                         .slice(0, 100);
-                      
+
                       const toggleGroup = (groupUserIds: number[]) => {
                         const allSelected = groupUserIds.every(id => notificationForm.userIds.includes(id));
                         if (allSelected) {
@@ -536,7 +535,7 @@ export default function AlertsPage() {
                           });
                         }
                       };
-                      
+
                       const toggleUser = (userId: number) => {
                         if (notificationForm.userIds.includes(userId)) {
                           setNotificationForm({
@@ -550,7 +549,7 @@ export default function AlertsPage() {
                           });
                         }
                       };
-                      
+
                       return (
                         <>
                           {/* Verified Users with Ads */}
@@ -586,7 +585,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Verified Users without Ads */}
                           {verifiedNoAds.length > 0 && (
                             <div className="space-y-2">
@@ -620,7 +619,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Unverified Users */}
                           {unverifiedUsers.length > 0 && (
                             <div className="space-y-2">
@@ -654,7 +653,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* New Users */}
                           {newUsers.length > 0 && (
                             <div className="space-y-2">
@@ -691,7 +690,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Inactive Users */}
                           {inactiveUsers.length > 0 && (
                             <div className="space-y-2">
@@ -725,7 +724,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* User Level Groups */}
                           {diamondUsers.length > 0 && (
                             <div className="space-y-2">
@@ -759,7 +758,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {goldUsers.length > 0 && (
                             <div className="space-y-2">
                               <div className="flex items-center justify-between border-b border-gray-200 pb-2">
@@ -792,7 +791,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {silverUsers.length > 0 && (
                             <div className="space-y-2">
                               <div className="flex items-center justify-between border-b border-gray-200 pb-2">
@@ -825,7 +824,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Business Users */}
                           {businessUsers.length > 0 && (
                             <div className="space-y-2">
@@ -859,7 +858,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Fully Verified Users */}
                           {fullyVerifiedUsers.length > 0 && (
                             <div className="space-y-2">
@@ -893,7 +892,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Phone Verified Users */}
                           {phoneVerifiedUsers.length > 0 && (
                             <div className="space-y-2">
@@ -927,7 +926,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Email Verified Users */}
                           {emailVerifiedUsers.length > 0 && (
                             <div className="space-y-2">
@@ -961,7 +960,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Staff/Admin Users */}
                           {staffUsers.length > 0 && (
                             <div className="space-y-2">
@@ -996,7 +995,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* App Users */}
                           {appUsers.length > 0 && (
                             <div className="space-y-2">
@@ -1030,7 +1029,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Users with Referrals */}
                           {usersWithReferrals.length > 0 && (
                             <div className="space-y-2">
@@ -1064,7 +1063,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Top 100 Users with Most Active Ads */}
                           {topActiveAdsUsers.length > 0 && (
                             <div className="space-y-2">
@@ -1098,7 +1097,7 @@ export default function AlertsPage() {
                               </div>
                             </div>
                           )}
-                          
+
                           {notificationForm.userIds.length > 0 && (
                             <div className="pt-2 border-t border-gray-200">
                               <p className="text-sm font-medium text-gray-700">

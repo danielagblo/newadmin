@@ -12,7 +12,6 @@ import {
   MessageSquare,
   Package,
   Shield,
-  Smartphone,
   Ticket,
   Users
 } from 'lucide-react';
@@ -40,8 +39,8 @@ const navigation: NavItem[] = [
   { name: 'Chat Rooms', href: '/chatrooms', icon: MessageSquare },
   { name: 'Messages', href: '/messages', icon: Mail },
   { name: 'Feedback', href: '/feedback', icon: MessageCircle },
+  { name: 'Account Delete Requests', href: '/account-delete-requests', icon: Users },
   { name: 'Alerts', href: '/alerts', icon: Bell },
-  { name: 'Devices', href: '/devices', icon: Smartphone },
 ];
 
 export const Sidebar: React.FC = () => {
