@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '/api-v1';
@@ -61,15 +61,49 @@ apiClient.interceptors.response.use(
   },
   (error: AxiosError) => {
     // Log error response in development
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      const url = error.config?.url || '';
-      const method = error.config?.method?.toUpperCase() || '';
-      console.error(`🔴 API Error: ${method} ${url}`, {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-      });
-    }
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        try {
+          const url = typeof error.config?.url === 'string' ? error.config!.url : '';
+          const method = typeof error.config?.method === 'string' ? error.config!.method.toUpperCase() : '';
+
+          // Build a safe, serializable summary string instead of passing potentially
+          // complex objects directly to console.error which can throw in some environments.
+          let status: string | number | undefined = undefined;
+          let statusText: string | undefined = undefined;
+          let data: any = undefined;
+          try {
+            // Access nested properties in a guarded way — protect against getters that may throw
+            status = error.response && typeof (error.response as any).status !== 'undefined' ? (error.response as any).status : undefined;
+            statusText = error.response && typeof (error.response as any).statusText === 'string' ? (error.response as any).statusText : undefined;
+            data = error.response && typeof (error.response as any).data !== 'undefined' ? (error.response as any).data : undefined;
+          } catch (_) {
+            // ignore any issues accessing nested properties
+          }
+
+          const safeStringify = (v: any) => {
+            try {
+              return JSON.stringify(v);
+            } catch (_) {
+              try {
+                return String(v);
+              } catch (__) {
+                return '[unserializable]';
+              }
+            }
+          };
+
+          const parts = [`🔴 API Error: ${method} ${url}`];
+          if (typeof status !== 'undefined') parts.push(`status=${status}`);
+          if (typeof statusText !== 'undefined') parts.push(`statusText=${statusText}`);
+          if (typeof data !== 'undefined') parts.push(`data=${safeStringify(data)}`);
+
+          console.error(parts.join(' | '));
+        } catch (logErr) {
+          try {
+            console.error('🔴 API Error (logging failed):', String(logErr));
+          } catch (_) {}
+        }
+      }
     
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {

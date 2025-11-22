@@ -1,32 +1,36 @@
 'use client';
 
 import { Layout } from '@/components/layout/Layout';
-import { useAuthStore } from '@/lib/store/auth';
-import { useEffect, useState } from 'react';
-import { usersApi } from '@/lib/api/users';
-import { productsApi } from '@/lib/api/products';
-import { chatRoomsApi } from '@/lib/api/chats';
 import { alertsApi } from '@/lib/api/alerts';
 import { categoriesApi } from '@/lib/api/categories';
-import { User, Product, ChatRoom, Alert } from '@/lib/types';
-import { 
-  Users, Package, TrendingUp, AlertCircle, MessageSquare, 
-  Bell
-} from 'lucide-react';
+import { chatRoomsApi } from '@/lib/api/chats';
+import { paymentsApi } from '@/lib/api/payments';
+import { productsApi } from '@/lib/api/products';
+import { usersApi } from '@/lib/api/users';
+import { useAuthStore } from '@/lib/store/auth';
+import { ChatRoom, Payment, Product, User } from '@/lib/types';
 import {
-  LineChart,
-  Line,
-  BarChart,
+  AlertCircle,
+  Bell, CreditCard,
+  MessageSquare,
+  Package, TrendingUp,
+  Users
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
   Bar,
-  PieChart,
-  Pie,
+  BarChart,
+  CartesianGrid,
   Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from 'recharts';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -40,11 +44,15 @@ export default function Dashboard() {
     pendingProducts: 0,
     totalChatRooms: 0,
     totalAlerts: 0,
+    totalPayments: 0,
+    paymentsSuccess: 0,
+    paymentsPending: 0,
+    paymentsFailed: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string>('');
-  
+
   // Chart data states
   const [userLevelData, setUserLevelData] = useState<any[]>([]);
   const [userVerificationData, setUserVerificationData] = useState<any[]>([]);
@@ -53,6 +61,7 @@ export default function Dashboard() {
   const [chatroomTypeData, setChatroomTypeData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [userActivityData, setUserActivityData] = useState<any[]>([]);
+  const [paymentStatusData, setPaymentStatusData] = useState<any[]>([]);
 
   useEffect(() => {
     const apiUrlValue = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -63,23 +72,31 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         setError(null);
-        const [users, productsResponse, chatRooms, alerts, categories] = await Promise.all([
+        const [users, productsResponse, chatRooms, alerts, categories, paymentsResponse] = await Promise.all([
           usersApi.list().catch(() => []),
           productsApi.list().catch(() => ({ results: [], count: 0 })),
           chatRoomsApi.list().catch(() => []),
           alertsApi.list().catch(() => []),
           categoriesApi.list().catch(() => []),
+          paymentsApi.list().catch(() => ({ results: [], count: 0 })),
         ]);
 
         const usersArray = Array.isArray(users) ? users : [];
         const chatRoomsArray = Array.isArray(chatRooms) ? chatRooms : [];
         const alertsArray = Array.isArray(alerts) ? alerts : [];
         const categoriesArray = Array.isArray(categories) ? categories : [];
+        // Payments handling
+        let paymentsArray: Payment[] = [];
+        if (Array.isArray(paymentsResponse)) {
+          paymentsArray = paymentsResponse as Payment[];
+        } else if (paymentsResponse && (paymentsResponse as any).results) {
+          paymentsArray = (paymentsResponse as any).results as Payment[];
+        }
 
         // Handle products - fetch all pages if paginated
         let productsArray: Product[] = [];
         let totalProductsCount = 0;
-        
+
         if (Array.isArray(productsResponse)) {
           // If it's already an array, use it directly
           productsArray = productsResponse;
@@ -90,14 +107,14 @@ export default function Dashboard() {
           totalProductsCount = productsResponse.count || 0;
           productsArray = productsResponse.results || [];
           console.log('Products: Paginated response, total count:', totalProductsCount, 'first page:', productsArray.length);
-          
+
           // Fetch all pages to get accurate counts for active/pending
           // Check if it has 'next' property (PaginatedResponse) before accessing
           if ('next' in productsResponse && productsResponse.next) {
             let currentPage = 2;
             let hasMore = true;
             const allProducts: Product[] = [...productsArray];
-            
+
             while (hasMore && currentPage <= 50) { // Limit to 50 pages to avoid infinite loops
               try {
                 const nextPage = await productsApi.list({ page: currentPage });
@@ -134,7 +151,18 @@ export default function Dashboard() {
           pendingProducts,
           totalChatRooms: chatRoomsArray.length,
           totalAlerts: alertsArray.length,
+          totalPayments: paymentsArray.length,
+          paymentsSuccess: paymentsArray.filter((p) => p.status === 'SUCCESS').length,
+          paymentsPending: paymentsArray.filter((p) => p.status === 'PENDING').length,
+          paymentsFailed: paymentsArray.filter((p) => p.status === 'FAILED').length,
         });
+
+        // Prepare payment status data for pie chart
+        setPaymentStatusData([
+          { name: 'Success', value: paymentsArray.filter((p) => p.status === 'SUCCESS').length, color: '#10b981' },
+          { name: 'Pending', value: paymentsArray.filter((p) => p.status === 'PENDING').length, color: '#f59e0b' },
+          { name: 'Failed', value: paymentsArray.filter((p) => p.status === 'FAILED').length, color: '#ef4444' },
+        ]);
 
         // User Level Distribution
         const levelCounts = {
@@ -232,8 +260,8 @@ export default function Dashboard() {
         const errorMessage = error?.response?.status === 401
           ? 'Authentication failed. Please log out and log in again.'
           : error?.response?.status === 404
-          ? `API endpoint not found. Check if API URL is correct: ${fullApiUrl}`
-          : error?.message || 'Failed to fetch data from API';
+            ? `API endpoint not found. Check if API URL is correct: ${fullApiUrl}`
+            : error?.message || 'Failed to fetch data from API';
         setError(errorMessage);
       } finally {
         setLoading(false);
@@ -280,6 +308,12 @@ export default function Dashboard() {
       value: stats.totalAlerts,
       icon: Bell,
       color: 'bg-pink-500',
+    },
+    {
+      title: 'Payments',
+      value: stats.totalPayments,
+      icon: CreditCard,
+      color: 'bg-indigo-600',
     },
   ];
 
@@ -429,6 +463,30 @@ export default function Dashboard() {
                     >
                       {userActivityData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Payment Status */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Status</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={paymentStatusData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {paymentStatusData.map((entry, index) => (
+                        <Cell key={`cell-pay-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
                     <Tooltip />

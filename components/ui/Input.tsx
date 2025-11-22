@@ -1,5 +1,5 @@
-import React from 'react';
 import clsx from 'clsx';
+import React from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -13,7 +13,10 @@ export const Input: React.FC<InputProps> = ({
   id,
   ...props
 }) => {
-  const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
+  // useId provides a stable id that matches between server and client
+  const generatedId = React.useId();
+  const safeId = generatedId ? String(generatedId).replace(/[:]/g, '') : '';
+  const inputId = id || `input-${safeId}`;
 
   return (
     <div className="w-full">

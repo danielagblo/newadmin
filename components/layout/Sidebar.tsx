@@ -36,6 +36,7 @@ const navigation: NavItem[] = [
   { name: 'Locations', href: '/locations', icon: MapPin },
   { name: 'Coupons', href: '/coupons', icon: Ticket },
   { name: 'Subscriptions', href: '/subscriptions', icon: CreditCard },
+  { name: 'Payments', href: '/payments', icon: CreditCard },
   { name: 'Reviews', href: '/reviews', icon: MessageSquare },
   { name: 'Chat Rooms', href: '/chatrooms', icon: MessageSquare },
   { name: 'Messages', href: '/messages', icon: Mail },

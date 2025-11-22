@@ -531,18 +531,23 @@ export default function ProductsPage() {
                             }))}
                           />
                         </div>
-                        {!product.is_taken && (
-                          <div className="border-t border-gray-100 my-1" />
-                          <button
-                            onClick={() => {
-                              handleMarkAsTaken(product);
-                              setOpenDropdown(null);
-                            }}
-                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            Mark as Taken
-                          </button>
-                        )}
+                          <div>
+                          {!product.is_taken && (
+                            <>
+                              <div className="border-t border-gray-100 my-1" />
+                              <button
+                                onClick={() => {
+                                  handleMarkAsTaken(product);
+                                  setOpenDropdown(null);
+                                }}
+                                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              >
+                                Mark as Taken
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                         <div className="border-t border-gray-100 my-1" />
                         <button
                           onClick={() => {
@@ -557,7 +562,6 @@ export default function ProductsPage() {
                           Delete
                         </button>
                       </div>
-                    </div>
                   </>
                 )}
               </div>

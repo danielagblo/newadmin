@@ -58,7 +58,7 @@ export interface ProductImage {
 export interface ProductFeature {
   id: number;
   product: number;
-  feature: any; // Feature object
+  feature: Feature; // Feature object
   value: string;
 }
 
@@ -288,6 +288,22 @@ export interface Wallet {
   id: number;
   user: number;
   balance: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Payment Types
+export interface Payment {
+  id: number;
+  user: number; // user id
+  subscription?: number | null; // subscription id
+  amount: string; // Decimal string
+  currency: string;
+  provider?: string;
+  reference?: string;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  channel?: string;
+  raw_response?: any;
   created_at: string;
   updated_at: string;
 }

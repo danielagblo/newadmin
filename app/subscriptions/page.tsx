@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { subscriptionsApi } from '@/lib/api/subscriptions';
 import { Subscription, SUBSCRIPTION_TIERS } from '@/lib/types';
 import { format } from 'date-fns';
-import { Briefcase, Check, Crown, Plus, Sparkles, Search } from 'lucide-react';
+import { Briefcase, Check, Crown, Plus, Search, Sparkles } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 export default function SubscriptionsPage() {
@@ -59,24 +59,24 @@ export default function SubscriptionsPage() {
       const params: any = {
         ordering: 'tier,price', // Order by tier then price
       };
-      
+
       if (searchTerm) {
         params.search = searchTerm;
       }
-      
+
       if (activeFilter !== 'all') {
         params.is_active = activeFilter === 'active';
       }
-      
+
       const data = await subscriptionsApi.list(params);
       const subscriptionsArray = Array.isArray(data) ? data : [];
-      
+
       // Client-side filtering for tier if needed (since API might not support it)
       let filteredSubscriptions = subscriptionsArray;
       if (tierFilter !== 'all') {
         filteredSubscriptions = subscriptionsArray.filter(s => s.tier === tierFilter);
       }
-      
+
       setSubscriptions(filteredSubscriptions);
     } catch (error: any) {
       console.error('Error fetching subscriptions:', error);
@@ -165,18 +165,34 @@ export default function SubscriptionsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // sanitize numeric-ish string fields to avoid sending stray characters like '%' or 'x'
+      const sanitizeDecimal = (v?: string | null) => {
+        if (v === null || typeof v === 'undefined') return null;
+        const s = String(v).trim();
+        if (s === '') return null;
+        const cleaned = s.replace(/[^0-9.\-]/g, '');
+        if (cleaned === '' || cleaned === '.' || cleaned === '-' || cleaned === '-.' || cleaned === '.-') return null;
+        return cleaned;
+      };
+
+      const cleanedPrice = sanitizeDecimal(formData.price);
+      if (!cleanedPrice) {
+        window.alert('Please enter a valid price');
+        return;
+      }
+
       const submitData: any = {
         name: formData.name,
         tier: formData.tier,
-        price: formData.price,
-        original_price: formData.original_price || null,
-        multiplier: formData.multiplier || null,
-        discount_percentage: formData.discount_percentage || null,
-        duration_days: formData.duration_days,
+        price: cleanedPrice,
+        original_price: sanitizeDecimal(formData.original_price),
+        multiplier: sanitizeDecimal(formData.multiplier),
+        discount_percentage: sanitizeDecimal(formData.discount_percentage),
+        duration_days: Number(formData.duration_days) || 0,
         description: formData.description || null,
         features: formData.features || null,
-        max_products: formData.max_products || 0,
-        is_active: formData.is_active,
+        max_products: Number(formData.max_products) || 0,
+        is_active: !!formData.is_active,
       };
       if (editingSubscription) {
         await subscriptionsApi.update(editingSubscription.id, submitData);
@@ -187,7 +203,20 @@ export default function SubscriptionsPage() {
       fetchSubscriptions();
     } catch (error: any) {
       console.error('Error saving subscription:', error);
-      window.alert(error?.response?.data?.detail || 'Failed to save subscription');
+      // Prefer showing detailed server validation errors when available
+      if (error?.response?.data) {
+        try {
+          const data = error.response.data;
+          const pretty = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+          window.alert(`Failed to save subscription:\n\n${pretty}`);
+        } catch (err) {
+          window.alert('Failed to save subscription');
+        }
+      } else if (error?.message) {
+        window.alert(error.message);
+      } else {
+        window.alert('Failed to save subscription');
+      }
     }
   };
 
@@ -203,20 +232,21 @@ export default function SubscriptionsPage() {
       key: 'tier',
       header: 'Tier',
       render: (sub: Subscription) => {
-        const tierConfig = {
+        const tierConfig: Record<string, { color: string; icon: React.ComponentType<any> }> = {
           BASIC: { color: 'bg-gray-100 text-gray-800', icon: Sparkles },
           BUSINESS: { color: 'bg-blue-100 text-blue-800', icon: Briefcase },
           PLATINUM: { color: 'bg-purple-100 text-purple-800', icon: Crown },
         };
-        const config = tierConfig[sub.tier];
-        const Icon = config.icon;
+        const config = (sub && sub.tier && tierConfig[sub.tier]) ? tierConfig[sub.tier] : { color: 'bg-gray-100 text-gray-800', icon: Sparkles };
+        const Icon = config.icon || Sparkles;
+        const tierLabel = sub && sub.tier ? String(sub.tier) : 'Unknown';
         return (
           <div className="flex items-center gap-2">
             <span className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${config.color}`}>
               <Icon className="h-3 w-3" />
-              {sub.tier}
+              {tierLabel}
             </span>
-            {sub.multiplier && (
+            {sub && sub.multiplier && (
               <span className="text-xs text-gray-500">{sub.multiplier}</span>
             )}
           </div>
@@ -264,7 +294,15 @@ export default function SubscriptionsPage() {
     {
       key: 'created_at',
       header: 'Created',
-      render: (sub: Subscription) => format(new Date(sub.created_at), 'MMM dd, yyyy'),
+      render: (sub: Subscription) => {
+        if (!sub.created_at) return '-';
+        try {
+          const d = new Date(sub.created_at);
+          return isNaN(d.getTime()) ? '-' : format(d, 'MMM dd, yyyy');
+        } catch {
+          return '-';
+        }
+      },
     },
   ];
 
@@ -314,7 +352,7 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {basicSubscriptions.length > 0 ? (
                 basicSubscriptions.map((sub) => {
-                  const features = sub.features_list || 
+                  const features = sub.features_list ||
                     (typeof sub.features === 'string'
                       ? sub.features.split(',').map((f: string) => f.trim()).filter(f => f)
                       : []);
@@ -366,7 +404,7 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {businessSubscriptions.length > 0 ? (
                 businessSubscriptions.map((sub) => {
-                  const features = sub.features_list || 
+                  const features = sub.features_list ||
                     (typeof sub.features === 'string'
                       ? sub.features.split(',').map((f: string) => f.trim()).filter(f => f)
                       : []);
@@ -422,7 +460,7 @@ export default function SubscriptionsPage() {
             <div className="space-y-4 mb-4">
               {platinumSubscriptions.length > 0 ? (
                 platinumSubscriptions.map((sub) => {
-                  const features = sub.features_list || 
+                  const features = sub.features_list ||
                     (typeof sub.features === 'string'
                       ? sub.features.split(',').map((f: string) => f.trim()).filter(f => f)
                       : []);

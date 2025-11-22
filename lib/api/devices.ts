@@ -38,13 +38,43 @@ export const devicesApi = {
     return response.data;
   },
 
-  create: async (token: string): Promise<FCMDevice> => {
-    const response = await notificationsClient.post<FCMDevice>('/devices/', { token });
+  create: async (payload: { token: string; user?: number }): Promise<FCMDevice> => {
+    const response = await notificationsClient.post<FCMDevice>('/devices/', payload);
+    return response.data;
+  },
+
+  update: async (id: number, payload: Partial<FCMDevice>): Promise<FCMDevice> => {
+    const response = await notificationsClient.put<FCMDevice>(`/devices/${id}/`, payload);
+    return response.data;
+  },
+
+  partialUpdate: async (id: number, payload: Partial<FCMDevice>): Promise<FCMDevice> => {
+    const response = await notificationsClient.patch<FCMDevice>(`/devices/${id}/`, payload);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
     await notificationsClient.delete(`/devices/${id}/`);
+  },
+
+  /**
+   * Save FCM token endpoint used by client apps.
+   * POST /notifications/save-fcm-token/
+   */
+  /**
+   * Save FCM token endpoint used by client apps.
+   * POST /notifications/save-fcm-token/
+   * Accepts payload: { token: string, user_id?: number }
+   */
+  saveFcmToken: async (payload: { token: string; user_id?: number }): Promise<any> => {
+    try {
+      const response = await notificationsClient.post('/save-fcm-token/', payload);
+      return response.data;
+    } catch (err: any) {
+      // Log server response for debugging and rethrow
+      console.error('saveFcmToken failed:', err.response?.status, err.response?.data || err.message);
+      throw err;
+    }
   },
 };
 
