@@ -38,7 +38,8 @@ export const devicesApi = {
     return response.data;
   },
 
-  create: async (payload: { token: string; user?: number }): Promise<FCMDevice> => {
+  create: async (payload: { token: string; user?: number; user_id?: number }): Promise<FCMDevice> => {
+    // Accept either `user` or `user_id` depending on backend expectations and forward as-is.
     const response = await notificationsClient.post<FCMDevice>('/devices/', payload);
     return response.data;
   },
@@ -67,6 +68,15 @@ export const devicesApi = {
    * Accepts payload: { token: string, user_id?: number }
    */
   saveFcmToken: async (payload: { token: string; user_id?: number }): Promise<any> => {
+    // Require frontend to provide `user_id`. Do not fall back to localStorage.
+    if (typeof payload.user_id === 'undefined' || payload.user_id === null) {
+      const msg = 'saveFcmToken failed: payload.user_id is required. The frontend must provide the user id.';
+      if (typeof window !== 'undefined') {
+        console.error(msg);
+      }
+      return Promise.reject(new Error(msg));
+    }
+
     try {
       const response = await notificationsClient.post('/save-fcm-token/', payload);
       return response.data;

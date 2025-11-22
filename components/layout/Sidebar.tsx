@@ -1,25 +1,24 @@
 'use client';
 
-import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import {
-  LayoutDashboard,
-  Users,
-  Package,
-  FolderTree,
-  MapPin,
-  Ticket,
-  MessageSquare,
   Bell,
-  Settings,
-  Smartphone,
   CreditCard,
-  Shield,
-  MessageCircle,
+  FolderTree,
+  LayoutDashboard,
   Mail,
+  MapPin,
+  MessageCircle,
+  MessageSquare,
+  Package,
+  Shield,
+  Smartphone,
+  Ticket,
+  Users
 } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import React from 'react';
 
 interface NavItem {
   name: string;

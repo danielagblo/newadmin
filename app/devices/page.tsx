@@ -53,20 +53,17 @@ export default function DevicesPage() {
 
     setAdding(true);
     try {
-      const payload: { token: string; user?: number } = { token: newToken.trim() };
-      if (selectedUser !== '') payload.user = selectedUser as number;
-      console.log('Creating device payload:', payload);
-      const created = await devicesApi.create(payload);
+      const payload: { token: string; user_id?: number } = { token: newToken.trim() };
+      if (selectedUser !== '') payload.user_id = selectedUser as number;
+      console.log('Creating device payload (user_id):', payload);
+      const created = await devicesApi.create(payload as any);
       console.log('Created device response:', created);
-      // If backend returned a different user than selected, try patching (admin endpoints may allow this)
-      if (payload.user !== undefined && created.user !== payload.user) {
-        try {
-          console.warn('Created device user differs from selected user. Attempting to patch user...');
-          const patched = await devicesApi.partialUpdate(created.id, { user: payload.user });
-          console.log('Patched device response:', patched);
-        } catch (err) {
-          console.error('Failed to patch device user after create:', err);
-        }
+      // If backend returned a different user than selected, surface a clear error so admin can act.
+      if (payload.user_id !== undefined && created.user !== payload.user_id) {
+        const msg = `Device was created with user=${created.user} but you requested user=${payload.user_id}. This likely means the backend ignored the provided user id or your token lacks admin permissions.`;
+        console.error(msg, { requested: payload.user_id, created: created.user, createdResponse: created });
+        // Show a visible alert so the admin notices immediately
+        window.alert(msg);
       }
       setNewToken('');
       fetchDevices();
@@ -93,7 +90,16 @@ export default function DevicesPage() {
 
   const columns = [
     { key: 'id', header: 'ID' },
-    { key: 'user', header: 'User ID' },
+    {
+      key: 'user',
+      header: 'User',
+      render: (device: FCMDevice) => {
+        const uid = (device as any).user ?? (device as any).user_id ?? null;
+        if (!uid) return '-';
+        const u = users.find((x) => x.id === uid);
+        return u ? `${u.name || u.email || u.id}` : String(uid);
+      },
+    },
     {
       key: 'token',
       header: 'Token',
