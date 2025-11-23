@@ -11,7 +11,7 @@ import { alertsApi } from '@/lib/api/alerts';
 import { feedbackApi } from '@/lib/api/feedback';
 import { Alert, Feedback } from '@/lib/types';
 import { format } from 'date-fns';
-import { Archive, CheckCircle, Eye, MessageSquare, Search } from 'lucide-react';
+import { Archive, CheckCircle, Eye, MessageSquare, Search, Star } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 export default function FeedbackPage() {
@@ -284,6 +284,21 @@ export default function FeedbackPage() {
           {getUserEmail(feedback) && (
             <div className="text-gray-500 text-xs">{getUserEmail(feedback)}</div>
           )}
+        </div>
+      ),
+    },
+    {
+      key: 'rating',
+      header: 'Rating',
+      render: (feedback: Feedback) => (
+        <div className="flex items-center">
+          {[...Array(5)].map((_, i) => (
+            <Star
+              key={i}
+              className={`h-4 w-4 ${i < (feedback.rating || 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+            />
+          ))}
+          <span className="ml-2">{feedback.rating ?? '-'}</span>
         </div>
       ),
     },

@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { DataTable } from '@/components/ui/DataTable';
-import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
 import { reviewsApi } from '@/lib/api/reviews';
-import { Review, PaginatedResponse } from '@/lib/types';
+import { PaginatedResponse, Review } from '@/lib/types';
 import { format } from 'date-fns';
 import { Star } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 export default function ReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -25,7 +24,7 @@ export default function ReviewsPage() {
       const params: any = { page: currentPage };
       const data = await reviewsApi.list(params);
       console.log('Reviews fetched:', data);
-      
+
       // Handle both paginated and non-paginated responses
       if (Array.isArray(data)) {
         setReviews(data);
@@ -83,9 +82,8 @@ export default function ReviewsPage() {
           {[...Array(5)].map((_, i) => (
             <Star
               key={i}
-              className={`h-4 w-4 ${
-                i < review.rating ? 'text-yellow-400 fill-current' : 'text-gray-300'
-              }`}
+              className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-current' : 'text-gray-300'
+                }`}
             />
           ))}
           <span className="ml-2">{review.rating}</span>

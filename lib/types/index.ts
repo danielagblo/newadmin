@@ -107,6 +107,8 @@ export interface Review {
 export interface Feedback {
   id: number;
   user?: User | number;
+  // Optional rating (some feedback endpoints include a numeric rating)
+  rating?: number;
   subject?: string;
   message: string;
   category?: string;
