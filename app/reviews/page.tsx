@@ -2,7 +2,9 @@
 
 import { Layout } from '@/components/layout/Layout';
 import { DataTable } from '@/components/ui/DataTable';
+import { Input } from '@/components/ui/Input';
 import { Pagination } from '@/components/ui/Pagination';
+import { Select } from '@/components/ui/Select';
 import { reviewsApi } from '@/lib/api/reviews';
 import { PaginatedResponse, Review } from '@/lib/types';
 import { format } from 'date-fns';
@@ -16,12 +18,16 @@ export default function ReviewsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [ratingFilter, setRatingFilter] = useState<string>('all');
+  const [ownerSearch, setOwnerSearch] = useState<string>('');
 
   const fetchReviews = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params: any = { page: currentPage };
+      if (ratingFilter && ratingFilter !== 'all') params.rating = ratingFilter;
+      if (ownerSearch) params.search = ownerSearch;
       const data = await reviewsApi.list(params);
       console.log('Reviews fetched:', data);
 
@@ -46,7 +52,7 @@ export default function ReviewsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage]);
+  }, [currentPage, ratingFilter, ownerSearch]);
 
   useEffect(() => {
     fetchReviews();
@@ -73,6 +79,11 @@ export default function ReviewsPage() {
       key: 'product',
       header: 'Product',
       render: (review: Review) => review.product?.name || '-',
+    },
+    {
+      key: 'owner',
+      header: 'Owner',
+      render: (review: Review) => review.product?.owner?.name || '-',
     },
     {
       key: 'rating',
@@ -110,6 +121,29 @@ export default function ReviewsPage() {
           <div className="text-sm text-gray-600">
             Total reviews: {totalItems} | Page {currentPage} of {totalPages}
           </div>
+        </div>
+
+        <div className="mb-4 flex items-center gap-4 flex-wrap">
+          <div className="relative w-64">
+            <Input
+              placeholder="Search owner..."
+              value={ownerSearch}
+              onChange={(e) => setOwnerSearch(e.target.value)}
+            />
+          </div>
+          <Select
+            value={ratingFilter}
+            onChange={(e) => setRatingFilter(e.target.value)}
+            className="w-48"
+            options={[
+              { value: 'all', label: 'All Ratings' },
+              { value: '5', label: '5' },
+              { value: '4', label: '4' },
+              { value: '3', label: '3' },
+              { value: '2', label: '2' },
+              { value: '1', label: '1' },
+            ]}
+          />
         </div>
 
         {error && (
