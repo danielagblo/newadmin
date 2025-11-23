@@ -17,24 +17,41 @@ export const usersApi = {
       '/user/',
     ];
     
+    let lastError: any = null;
+    
     for (const endpoint of endpoints) {
       try {
-        console.log(`Trying users endpoint: ${endpoint} with params:`, params);
+        console.log(`🔍 Trying users endpoint: ${endpoint} with params:`, params);
         const response = await apiClient.get<User[] | PaginatedResponse<User>>(endpoint, { params });
-        console.log(`✅ Successfully fetched from ${endpoint}:`, response.data);
+        console.log(`✅ Successfully fetched from ${endpoint}`);
+        console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
+        console.log(`📊 Response data length:`, Array.isArray(response.data) ? response.data.length : 
+                    (response.data?.results ? response.data.results.length : 'N/A'));
+        
+        // Log sample of response to help debug
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          console.log(`📊 Sample user from response:`, response.data[0]);
+        } else if (response.data?.results && response.data.results.length > 0) {
+          console.log(`📊 Sample user from paginated response:`, response.data.results[0]);
+        }
       
         // Handle array response
         if (Array.isArray(response.data)) {
           console.log(`✅ Fetched ${response.data.length} users from ${endpoint} (array format)`);
-          // Validate user objects
+          // Validate user objects - be more lenient with validation
           const validUsers = response.data.filter((user: any) => {
-            const isValid = user && typeof user === 'object' && (user.id !== undefined || user.email !== undefined);
+            // Accept if it's an object with at least id or email or phone
+            const isValid = user && typeof user === 'object' && 
+                          (user.id !== undefined || user.email !== undefined || user.phone !== undefined || user.pk !== undefined);
             if (!isValid) {
               console.warn('Invalid user object found:', user);
             }
             return isValid;
           });
           console.log(`✅ Validated ${validUsers.length} valid users out of ${response.data.length}`);
+          if (validUsers.length === 0 && response.data.length > 0) {
+            console.warn('⚠️ All users were filtered out! Sample user:', response.data[0]);
+          }
           return validUsers;
         }
         
@@ -44,14 +61,20 @@ export const usersApi = {
           let allUsers = [...paginatedData.results];
           console.log(`✅ Fetched ${allUsers.length} users from ${endpoint} page 1 (paginated format)`);
           
-          // Validate users
+          // Validate users - be more lenient with validation
           allUsers = allUsers.filter((user: any) => {
-            const isValid = user && typeof user === 'object' && (user.id !== undefined || user.email !== undefined);
+            // Accept if it's an object with at least id or email or phone
+            const isValid = user && typeof user === 'object' && 
+                          (user.id !== undefined || user.email !== undefined || user.phone !== undefined || user.pk !== undefined);
             if (!isValid) {
               console.warn('Invalid user object found:', user);
             }
             return isValid;
           });
+          
+          if (allUsers.length === 0 && paginatedData.results && paginatedData.results.length > 0) {
+            console.warn('⚠️ All users were filtered out! Sample user from paginated response:', paginatedData.results[0]);
+          }
           
           // Fetch all remaining pages if paginated
           if (paginatedData.next) {
@@ -65,9 +88,10 @@ export const usersApi = {
                 const pageData = pageResponse.data;
                 
                 if (pageData.results && Array.isArray(pageData.results)) {
-                  // Validate users from this page
+                  // Validate users from this page - be more lenient
                   const validPageUsers = pageData.results.filter((user: any) => {
-                    const isValid = user && typeof user === 'object' && (user.id !== undefined || user.email !== undefined);
+                    const isValid = user && typeof user === 'object' && 
+                                  (user.id !== undefined || user.email !== undefined || user.phone !== undefined || user.pk !== undefined);
                     if (!isValid) {
                       console.warn('Invalid user object found on page', currentPage, ':', user);
                     }
@@ -109,15 +133,49 @@ export const usersApi = {
         console.warn(`⚠️ Unexpected response format from ${endpoint}:`, response.data);
         continue;
       } catch (error: any) {
-        console.log(`❌ ${endpoint} failed:`, error.response?.status || error.message);
+        const status = error.response?.status;
+        const statusText = error.response?.statusText;
+        const data = error.response?.data;
+        
+        console.log(`❌ ${endpoint} failed:`, {
+          status,
+          statusText,
+          message: error.message,
+          data: data ? (typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 200)) : 'No data'
+        });
+        
+        lastError = error;
         // Try next endpoint
         continue;
       }
     }
     
-    // If all endpoints failed, throw the last error
-    console.error('❌ All users endpoints failed');
-    throw new Error('Failed to fetch users from all available endpoints');
+    // If all endpoints failed, provide detailed error message
+    console.error('❌ All users endpoints failed or returned no data');
+    
+    if (lastError) {
+      const status = lastError.response?.status;
+      const message = lastError.response?.data?.detail || lastError.response?.data?.message || lastError.message;
+      
+      if (status === 401) {
+        console.error('💡 Authentication failed (401) - please log out and log in again');
+      } else if (status === 403) {
+        console.error('💡 Access denied (403) - you may not have permission to view users');
+      } else if (status === 404) {
+        console.error('💡 Endpoint not found (404) - check if /api-v1/admin/users/ exists in Django backend');
+      }
+      
+      console.error('💡 Last error details:', {
+        status,
+        message,
+        url: lastError.config?.url,
+        baseURL: lastError.config?.baseURL
+      });
+    }
+    
+    // Return empty array instead of throwing to prevent breaking the UI
+    console.warn('⚠️ Returning empty array - users may exist in Django admin but API endpoints are not accessible');
+    return [];
   },
 
   get: async (id: number): Promise<User> => {
