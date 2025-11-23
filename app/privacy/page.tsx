@@ -1,129 +1,119 @@
-'use client';
+"use client";
 
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Textarea';
-import { legalApi } from '@/lib/api/legal';
-import React, { useEffect, useState } from 'react';
-import { Lock, Save, RefreshCw } from 'lucide-react';
+import { legalApi, LegalContent } from '@/lib/api/legal';
+import { Calendar, Edit, Lock, Plus, Trash } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export default function PrivacyPage() {
-  const [content, setContent] = useState('');
+  const [items, setItems] = useState<LegalContent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editing, setEditing] = useState<LegalContent | null>(null);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string[]>>();
 
   useEffect(() => {
-    fetchPrivacyPolicy();
+    fetchList();
   }, []);
 
-  const fetchPrivacyPolicy = async () => {
+  const fetchList = async () => {
     setLoading(true);
     setError(null);
     try {
-      const content = await legalApi.getPrivacy();
-      if (content) {
-        setContent(content);
-      } else {
-        // If no content from API, show default template
-        setContent(`PRIVACY POLICY
-
-Last updated: ${new Date().toLocaleDateString()}
-
-1. INTRODUCTION
-Oysloe ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform.
-
-2. INFORMATION WE COLLECT
-We collect information that you provide directly to us, including:
-- Personal identification information (name, email address, phone number)
-- Account credentials
-- Profile information
-- Content you post or share on the platform
-- Communication data when you contact us
-
-3. AUTOMATICALLY COLLECTED INFORMATION
-We automatically collect certain information when you use our platform:
-- Device information (device type, operating system, unique device identifiers)
-- Log data (IP address, browser type, access times)
-- Usage information (pages viewed, features used, time spent)
-- Location information (with your consent)
-
-4. HOW WE USE YOUR INFORMATION
-We use the collected information to:
-- Provide, maintain, and improve our services
-- Process transactions and send related information
-- Send administrative information and updates
-- Respond to your comments and questions
-- Monitor and analyze trends and usage
-- Detect, prevent, and address technical issues
-- Personalize your experience
-
-5. INFORMATION SHARING AND DISCLOSURE
-We do not sell your personal information. We may share your information in the following circumstances:
-- With service providers who assist in operating our platform
-- When required by law or to protect our rights
-- In connection with a business transfer or merger
-- With your consent
-
-6. DATA SECURITY
-We implement appropriate technical and organizational measures to protect your personal information. However, no method of transmission over the internet is 100% secure.
-
-7. YOUR RIGHTS
-Depending on your location, you may have certain rights regarding your personal information:
-- Access to your personal information
-- Correction of inaccurate data
-- Deletion of your data
-- Objection to processing
-- Data portability
-
-8. COOKIES AND TRACKING TECHNOLOGIES
-We use cookies and similar tracking technologies to track activity on our platform and store certain information.
-
-9. CHILDREN'S PRIVACY
-Our platform is not intended for children under the age of 13. We do not knowingly collect personal information from children.
-
-10. CHANGES TO THIS PRIVACY POLICY
-We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page.
-
-11. CONTACT US
-If you have questions about this Privacy Policy, please contact us through the platform's support channels.`);
-      }
-    } catch (error: any) {
-      console.error('Error fetching privacy policy:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to load privacy policy';
-      setError(`Failed to load: ${errorMessage}. Please check if the API endpoint exists.`);
+      const list = await legalApi.listPrivacy();
+      setItems(list || []);
+    } catch (err: any) {
+      console.error('Failed to load privacy list', err);
+      setError(err?.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    setTitle('');
+    setBody('');
+    setFormErrors(undefined);
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (item: LegalContent) => {
+    setEditing(item);
+    setTitle((item as any).title || '');
+    setBody((item as any).content || (item as any).body || '');
+    setFormErrors(undefined);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditing(null);
+  };
+
   const handleSave = async () => {
+    if (!title.trim() || !body.trim()) {
+      setError('Title and body are required');
+      return;
+    }
     setSaving(true);
     setError(null);
-    setSuccess(null);
+    setFormErrors(undefined);
     try {
-      await legalApi.updatePrivacy(content);
-      setSuccess('Privacy policy saved successfully!');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (error: any) {
-      console.error('Error saving privacy policy:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to save privacy policy';
-      setError(`Failed to save: ${errorMessage}. Please check if the API endpoint exists.`);
+      const iso = new Date().toISOString();
+      const dateOnly = iso.split('T')[0];
+      const payload: Record<string, any> = {
+        content: body,
+        updated_at: iso,
+        body: body,
+        date: dateOnly,
+        ...(title ? { title } : {}),
+      };
+
+      let result: LegalContent;
+      if (editing && editing.id) {
+        result = await legalApi.updatePrivacyById(editing.id as any, payload);
+      } else {
+        result = await legalApi.createPrivacy(payload);
+      }
+
+      await fetchList();
+      setIsModalOpen(false);
+    } catch (err: any) {
+      console.error('Save failed', err);
+      const data = err?.response?.data;
+      if (data && typeof data === 'object') {
+        setFormErrors(data as Record<string, string[]>);
+        const firstKey = Object.keys(data)[0];
+        const firstMsg = Array.isArray((data as any)[firstKey]) ? (data as any)[firstKey][0] : String((data as any)[firstKey]);
+        setError(firstMsg || 'Save failed');
+      } else {
+        setError(err?.response?.data?.message || err?.message || 'Save failed');
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <RefreshCw className="h-8 w-8 animate-spin text-primary-600" />
-        </div>
-      </Layout>
-    );
-  }
+  const handleDelete = async (item: LegalContent) => {
+    if (!confirm('Delete this privacy entry?')) return;
+    try {
+      await legalApi.deletePrivacyById(item.id as any);
+      await fetchList();
+    } catch (err: any) {
+      console.error('Delete failed', err);
+      setError(err?.message || 'Delete failed');
+    }
+  };
 
   return (
     <Layout>
@@ -131,23 +121,12 @@ If you have questions about this Privacy Policy, please contact us through the p
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Lock className="h-8 w-8 text-primary-600" />
-            <h1 className="text-3xl font-bold text-gray-900">Privacy Policy</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Privacy Policies</h1>
           </div>
-          <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              onClick={fetchPrivacyPolicy}
-              disabled={loading}
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving || !content.trim()}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {saving ? 'Saving...' : 'Save Changes'}
+          <div>
+            <Button onClick={openCreate} className="flex items-center" variant="primary">
+              <Plus className="h-4 w-4 mr-2" />
+              New Privacy
             </Button>
           </div>
         </div>
@@ -158,46 +137,69 @@ If you have questions about this Privacy Policy, please contact us through the p
           </div>
         )}
 
-        {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-            {success}
-          </div>
-        )}
-
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Privacy Policy Content
-            </label>
-            <p className="text-sm text-gray-500 mb-4">
-              Edit the privacy policy content below. This content will be displayed to users.
-            </p>
-          </div>
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Enter privacy policy content..."
-            rows={30}
-            className="font-mono text-sm"
-          />
-          <div className="mt-4 text-sm text-gray-500">
-            <p>Content length: {content.length} characters</p>
-          </div>
+          {loading ? (
+            <div className="text-center py-8">Loading...</div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-8 text-gray-600">No privacy policies found. Create one with the button above.</div>
+          ) : (
+            <div className="space-y-4">
+              {items.map((t) => (
+                <div key={t.id} className="p-4 border rounded-lg flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center space-x-3">
+                      <h3 className="text-lg font-semibold">{(t as any).title || `Privacy #${t.id}`}</h3>
+                      {t.updated_at && (
+                        <div className="text-sm text-gray-500 flex items-center space-x-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>{new Date(t.updated_at).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-700 mt-2 line-clamp-3 whitespace-pre-wrap">{(t as any).body || t.content}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button variant="outline" onClick={() => openEdit(t)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button variant="danger" onClick={() => handleDelete(t)}>
+                      <Trash className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="font-semibold text-blue-900 mb-2">API Endpoints:</h3>
-          <p className="text-sm text-blue-800 mb-2">
-            The system will try the following endpoints in order:
-          </p>
-          <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
-            <li><code className="bg-blue-100 px-1 rounded">GET /api-v1/admin/privacy/</code></li>
-            <li><code className="bg-blue-100 px-1 rounded">GET /api-v1/privacy/</code></li>
-            <li><code className="bg-blue-100 px-1 rounded">GET /api-v1/admin/privacy-policy/</code></li>
-            <li><code className="bg-blue-100 px-1 rounded">GET /api-v1/admin/legal-content/?type=privacy</code></li>
-            <li><code className="bg-blue-100 px-1 rounded">PUT /api-v1/admin/privacy/</code> (for saving)</li>
-          </ul>
-        </div>
+        <Modal isOpen={isModalOpen} onClose={closeModal} title={editing ? 'Edit Privacy' : 'Create Privacy'} size="lg">
+          <div className="space-y-4">
+            {formErrors && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                <p className="font-medium">Please fix the following:</p>
+                <ul className="mt-2 list-disc list-inside text-sm">
+                  {Object.entries(formErrors).map(([field, msgs]) => (
+                    <li key={field}>
+                      <strong className="capitalize">{field}</strong>: {Array.isArray(msgs) ? msgs.join(' ') : String(msgs)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} />
+            </div>
+            <div className="flex items-center justify-end space-x-2">
+              <Button variant="outline" onClick={closeModal}>Cancel</Button>
+              <Button onClick={handleSave} isLoading={saving}>{editing ? 'Save Changes' : 'Create'}</Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </Layout>
   );

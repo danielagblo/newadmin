@@ -1,6 +1,6 @@
+import ToastClient from '@/components/ui/ToastClient';
 import type { Metadata } from 'next';
 import './globals.css';
-import { ToastProvider } from '@/components/ui/Toast';
 
 export const metadata: Metadata = {
   title: 'Oysloe Admin Panel',
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastClient>{children}</ToastClient>
       </body>
     </html>
   );
