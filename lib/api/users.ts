@@ -23,7 +23,16 @@ export const usersApi = {
         console.log(`✅ Successfully fetched from ${endpoint}`);
         console.log(`📊 Response status: ${response.status}`);
         console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
-        console.log(`📊 Response data:`, JSON.stringify(response.data, null, 2).substring(0, 500));
+        // Log full response data (truncated for readability)
+        try {
+          const responseStr = JSON.stringify(response.data, null, 2);
+          console.log(`📊 Response data (first 1000 chars):`, responseStr.substring(0, 1000));
+          if (responseStr.length > 1000) {
+            console.log(`📊 ... (${responseStr.length - 1000} more characters)`);
+          }
+        } catch (e) {
+          console.log(`📊 Response data:`, response.data);
+        }
         
         const dataLength = Array.isArray(response.data) 
           ? response.data.length 
