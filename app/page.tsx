@@ -8,7 +8,7 @@ import { paymentsApi } from '@/lib/api/payments';
 import { productsApi } from '@/lib/api/products';
 import { usersApi } from '@/lib/api/users';
 import { useAuthStore } from '@/lib/store/auth';
-import { ChatRoom, Payment, Product, User } from '@/lib/types';
+import { ChatRoom, Payment, Product, User, PaginatedResponse } from '@/lib/types';
 import {
   AlertCircle,
   Bell, CreditCard,
@@ -102,15 +102,16 @@ export default function Dashboard() {
           productsArray = productsResponse;
           totalProductsCount = productsResponse.length;
           console.log('Products: Array response, total:', totalProductsCount);
-        } else {
+        } else if (productsResponse && typeof productsResponse === 'object' && 'results' in productsResponse) {
           // It's a paginated response
-          totalProductsCount = productsResponse.count || 0;
-          productsArray = productsResponse.results || [];
+          const paginatedResponse = productsResponse as PaginatedResponse<Product>;
+          totalProductsCount = paginatedResponse.count || 0;
+          productsArray = paginatedResponse.results || [];
           console.log('Products: Paginated response, total count:', totalProductsCount, 'first page:', productsArray.length);
 
           // Fetch all pages to get accurate counts for active/pending
           // Check if it has 'next' property (PaginatedResponse) before accessing
-          if ('next' in productsResponse && productsResponse.next) {
+          if (paginatedResponse.next) {
             let currentPage = 2;
             let hasMore = true;
             const allProducts: Product[] = [...productsArray];
@@ -145,6 +146,11 @@ export default function Dashboard() {
             productsArray = allProducts;
             console.log('Products: Fetched all pages, total products:', productsArray.length);
           }
+        } else {
+          // Fallback: if response format is unexpected, log and set empty
+          console.warn('Products: Unexpected response format:', productsResponse);
+          productsArray = [];
+          totalProductsCount = 0;
         }
 
         // Calculate basic stats
