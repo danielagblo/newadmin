@@ -31,8 +31,11 @@ export const usersApi = {
         // Log sample of response to help debug
         if (Array.isArray(response.data) && response.data.length > 0) {
           console.log(`📊 Sample user from response:`, response.data[0]);
-        } else if (response.data?.results && response.data.results.length > 0) {
-          console.log(`📊 Sample user from paginated response:`, response.data.results[0]);
+        } else if (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data) {
+          const paginatedData = response.data as PaginatedResponse<User>;
+          if (Array.isArray(paginatedData.results) && paginatedData.results.length > 0) {
+            console.log(`📊 Sample user from paginated response:`, paginatedData.results[0]);
+          }
         }
       
         // Handle array response
