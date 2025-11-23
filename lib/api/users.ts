@@ -170,13 +170,14 @@ export const usersApi = {
       } else if (status === 403) {
         console.error('💡 Access denied (403) - you may not have permission to view users');
         throw new Error('Access denied. You may not have permission to view users.');
-      } else if (status === 404) {
+      } else       if (status === 404) {
         console.error('💡 Endpoint not found (404)');
         console.error('💡 Verify /api-v1/admin/users/ exists in API docs: https://api.oysloe.com/api/docs/#/');
         throw new Error(`Endpoint not found. Please verify /api-v1/admin/users/ exists in your Django backend. Check API docs: https://api.oysloe.com/api/docs/#/`);
       }
       
       throw error;
+    }
   },
 
   get: async (id: number): Promise<User> => {
