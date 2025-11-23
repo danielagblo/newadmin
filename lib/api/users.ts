@@ -9,38 +9,31 @@ export const usersApi = {
       params.search = search; // Try both 'q' and 'search' parameters
     }
     
-    // Try multiple endpoints
-    const endpoints = [
-      '/admin/users/',
-      '/users/',
-      '/admin/user/',
-      '/user/',
-    ];
+    // Use the correct endpoint from API docs: https://api.oysloe.com/api/docs/#/
+    // Per API documentation, the endpoint is: GET /api-v1/admin/users/
+    const endpoint = '/admin/users/';
     
-    let lastError: any = null;
-    
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`🔍 Trying users endpoint: ${endpoint} with params:`, params);
-        const response = await apiClient.get<User[] | PaginatedResponse<User>>(endpoint, { params });
-        console.log(`✅ Successfully fetched from ${endpoint}`);
-        console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
-        const dataLength = Array.isArray(response.data) 
-          ? response.data.length 
-          : (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data)
-            ? (response.data as PaginatedResponse<User>).results?.length || 0
-            : 'N/A';
-        console.log(`📊 Response data length:`, dataLength);
-        
-        // Log sample of response to help debug
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          console.log(`📊 Sample user from response:`, response.data[0]);
-        } else if (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data) {
-          const paginatedData = response.data as PaginatedResponse<User>;
-          if (Array.isArray(paginatedData.results) && paginatedData.results.length > 0) {
-            console.log(`📊 Sample user from paginated response:`, paginatedData.results[0]);
-          }
+    try {
+      console.log(`🔍 Fetching users from ${endpoint} with params:`, params);
+      const response = await apiClient.get<User[] | PaginatedResponse<User>>(endpoint, { params });
+      console.log(`✅ Successfully fetched from ${endpoint}`);
+      console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
+      const dataLength = Array.isArray(response.data) 
+        ? response.data.length 
+        : (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data)
+          ? (response.data as PaginatedResponse<User>).results?.length || 0
+          : 'N/A';
+      console.log(`📊 Response data length:`, dataLength);
+      
+      // Log sample of response to help debug
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        console.log(`📊 Sample user from response:`, response.data[0]);
+      } else if (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data) {
+        const paginatedData = response.data as PaginatedResponse<User>;
+        if (Array.isArray(paginatedData.results) && paginatedData.results.length > 0) {
+          console.log(`📊 Sample user from paginated response:`, paginatedData.results[0]);
         }
+      }
       
         // Handle array response
         if (Array.isArray(response.data)) {
