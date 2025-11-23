@@ -260,6 +260,8 @@ export interface Alert {
   title: string;
   body: string;
   kind?: string;
+  // Optional feedback id this alert is related to (frontend/backends may store this)
+  feedback?: number;
   is_read: boolean;
   created_at: string;
 }

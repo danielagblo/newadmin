@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
+import { alertsApi } from '@/lib/api/alerts';
 import { feedbackApi } from '@/lib/api/feedback';
-import { Feedback } from '@/lib/types';
+import { Alert, Feedback } from '@/lib/types';
 import { format } from 'date-fns';
 import { Archive, CheckCircle, Eye, MessageSquare, Search } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -17,6 +18,7 @@ export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isResponseModalOpen, setIsResponseModalOpen] = useState(false);
@@ -43,6 +45,12 @@ export default function FeedbackPage() {
       const data = await feedbackApi.list(params);
       const feedbacksArray = Array.isArray(data) ? data : [];
       setFeedbacks(feedbacksArray);
+
+      // Also fetch alerts in parallel (best-effort). We don't want alerts failures
+      // to prevent feedbacks from showing, so handle errors separately.
+      alertsApi.list()
+        .then((a) => setAlerts(Array.isArray(a) ? a : []))
+        .catch((aErr) => console.warn('Failed to fetch alerts:', aErr));
     } catch (error: any) {
       console.error('Error fetching feedbacks:', error);
 
@@ -105,18 +113,46 @@ export default function FeedbackPage() {
 
   const handleSubmitResponse = async () => {
     if (!selectedFeedback) return;
-
     try {
-      await feedbackApi.update(selectedFeedback.id, {
-        admin_response: adminResponse,
-        status: 'RESOLVED',
-      });
+      // Re-check status from alerts to avoid sending another response if already resolved.
+      const currentAlert = findAlertForFeedback(selectedFeedback);
+      if (currentAlert && (getAlertStatus(selectedFeedback) === 'RESOLVED')) {
+        window.alert('This feedback is already resolved.');
+        setIsResponseModalOpen(false);
+        setAdminResponse('');
+        return;
+      }
+      // Only create an alert to notify the user. We do not call the feedback API.
+      const userId = getUserId(selectedFeedback);
+      const title = selectedFeedback.subject
+        ? `Response: ${selectedFeedback.subject}`
+        : 'Response to your feedback';
+      const body = adminResponse || 'An admin has responded to your feedback.';
+
+      // Build payload: use the feedback id as the `title` (so backend can link by title),
+      // include body, kind and user. Avoid extra fields if not needed by backend.
+      const payload: any = {
+        title: String(selectedFeedback.id),
+        body: adminResponse || body,
+        kind: 'feedback_response',
+      };
+      if (userId) payload.user = userId;
+
+      await alertsApi.create(payload);
+
+      // Update local UI so admin sees the response applied immediately.
+      setFeedbacks((prev) =>
+        prev.map((f) =>
+          f.id === selectedFeedback.id ? { ...f, admin_response: adminResponse, status: 'RESOLVED' } : f
+        )
+      );
+      setSelectedFeedback((prev) => (prev ? { ...prev, admin_response: adminResponse, status: 'RESOLVED' } : prev));
+
       setIsResponseModalOpen(false);
       setAdminResponse('');
-      fetchFeedbacks();
     } catch (error: any) {
-      console.error('Error submitting response:', error);
-      window.alert(error.response?.data?.detail || 'Failed to submit response');
+      console.error('Error sending response via alerts API:', error);
+      window.alert(error.response?.data?.detail || error.message || 'Failed to send response notification');
     }
   };
 
@@ -165,6 +201,79 @@ export default function FeedbackPage() {
     return '';
   };
 
+  const getUserId = (feedback: Feedback) => {
+    if (typeof feedback.user === 'object' && feedback.user && (feedback.user as any).id) {
+      return (feedback.user as any).id as number;
+    }
+    if (typeof feedback.user === 'number') return feedback.user as number;
+    return undefined;
+  };
+
+  const matchesAlertToFeedback = (alertUser: any, feedbackUser: any) => {
+    if (!feedbackUser || alertUser == null) return false;
+    // alertUser may be user object or id
+    if (typeof alertUser === 'object' && alertUser) {
+      const alertUserId = (alertUser as any).id;
+      if (typeof feedbackUser === 'object' && feedbackUser) return alertUserId === (feedbackUser as any).id;
+      return typeof feedbackUser === 'number' ? alertUserId === feedbackUser : false;
+    }
+    // alertUser is number
+    if (typeof alertUser === 'number') {
+      if (typeof feedbackUser === 'object' && feedbackUser) return alertUser === (feedbackUser as any).id;
+      return typeof feedbackUser === 'number' ? alertUser === feedbackUser : false;
+    }
+    return false;
+  };
+
+  const findAlertForFeedback = (feedback: Feedback) => {
+    // Matching priority:
+    // 1) explicit alert.feedback === feedback.id
+    // 2) alert.title === String(feedback.id) (some backends may store the feedback id in title)
+    // 3) fallback to user-based matching where alert.user matches feedback.user
+    const byFeedback = alerts.find((a) => typeof (a as any).feedback !== 'undefined' && (a as any).feedback === feedback.id && (!(a as any).kind || (a as any).kind === 'feedback_response'));
+    if (byFeedback) return byFeedback as Alert;
+
+    const byTitle = alerts.find((a) => {
+      if (!a) return false;
+      if (a.kind && a.kind !== 'feedback_response') return false;
+      return String(a.title) === String(feedback.id);
+    });
+    if (byTitle) return byTitle as Alert;
+
+    return alerts.find((a) => {
+      if (!a) return false;
+      if (a.kind && a.kind !== 'feedback_response') return false;
+      return matchesAlertToFeedback(a.user, feedback.user);
+    });
+  };
+
+  const getAlertResponse = (feedback: Feedback) => {
+    const a = findAlertForFeedback(feedback);
+    return a?.body || feedback.admin_response || '';
+  };
+
+  const getAlertStatus = (feedback: Feedback) => {
+    const a = findAlertForFeedback(feedback);
+    return a ? 'RESOLVED' : (feedback.status || 'PENDING');
+  };
+
+  const getAlertCreated = (feedback: Feedback) => {
+    const a = findAlertForFeedback(feedback);
+    return a?.created_at || feedback.created_at;
+  };
+
+  const safeFormat = (dateLike?: string | undefined, fmt = 'MMM dd, yyyy HH:mm') => {
+    if (!dateLike) return '-';
+    try {
+      const d = new Date(dateLike);
+      if (isNaN(d.getTime())) return '-';
+      return format(d, fmt);
+    } catch (e) {
+      console.warn('safeFormat failed for', dateLike, e);
+      return '-';
+    }
+  };
+
   const columns = [
     {
       key: 'user',
@@ -190,21 +299,24 @@ export default function FeedbackPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (feedback: Feedback) => getStatusBadge(feedback.status),
+      render: (feedback: Feedback) => getStatusBadge(getAlertStatus(feedback)),
     },
     {
       key: 'created_at',
       header: 'Created',
-      render: (feedback: Feedback) => feedback.created_at ? format(new Date(feedback.created_at), 'MMM dd, yyyy HH:mm') : '-',
+      render: (feedback: Feedback) => safeFormat(getAlertCreated(feedback), 'MMM dd, yyyy HH:mm'),
     },
     {
       key: 'response',
       header: 'Response',
-      render: (feedback: Feedback) => feedback.admin_response ? (
-        <div className="text-sm whitespace-pre-wrap max-w-md">{feedback.admin_response}</div>
-      ) : (
-        <div className="text-sm text-gray-500">-</div>
-      ),
+      render: (feedback: Feedback) => {
+        const resp = getAlertResponse(feedback);
+        return resp ? (
+          <div className="text-sm whitespace-pre-wrap max-w-md">{resp}</div>
+        ) : (
+          <div className="text-sm text-gray-500">-</div>
+        );
+      },
     },
   ];
 
@@ -274,7 +386,7 @@ export default function FeedbackPage() {
                 >
                   <Eye className="h-4 w-4" />
                 </button>
-                {feedback.status !== 'RESOLVED' && (
+                {getAlertStatus(feedback) !== 'RESOLVED' && (
                   <button
                     onClick={() => handleRespond(feedback)}
                     className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded"
@@ -351,22 +463,28 @@ export default function FeedbackPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Created</label>
                 <div className="text-sm text-gray-900">
-                  {format(new Date(selectedFeedback.created_at), 'MMM dd, yyyy HH:mm:ss')}
+                  {safeFormat(selectedFeedback.created_at, 'MMM dd, yyyy HH:mm:ss')}
                 </div>
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button
-                  onClick={() => {
-                    setIsViewModalOpen(false);
-                    handleRespond(selectedFeedback);
-                  }}
-                  variant="primary"
-                  className="flex-1"
-                >
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  {selectedFeedback.admin_response ? 'Update Response' : 'Respond'}
-                </Button>
+                {getAlertStatus(selectedFeedback) !== 'RESOLVED' ? (
+                  <Button
+                    onClick={() => {
+                      setIsViewModalOpen(false);
+                      handleRespond(selectedFeedback);
+                    }}
+                    variant="primary"
+                    className="flex-1"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    {selectedFeedback.admin_response ? 'Update Response' : 'Respond'}
+                  </Button>
+                ) : (
+                  <div className="flex-1">
+                    <span className="text-sm text-gray-600">This feedback is resolved.</span>
+                  </div>
+                )}
                 <Button
                   onClick={() => setIsViewModalOpen(false)}
                   variant="outline"
@@ -414,6 +532,7 @@ export default function FeedbackPage() {
                   onClick={handleSubmitResponse}
                   variant="primary"
                   className="flex-1"
+                  disabled={getAlertStatus(selectedFeedback) === 'RESOLVED'}
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Submit Response

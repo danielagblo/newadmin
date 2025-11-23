@@ -1,4 +1,5 @@
-import ToastClient from '@/components/ui/ToastClient';
+// Temporarily removed ToastClient to isolate client-side syntax error
+// import ToastClient from '@/components/ui/ToastClient';
 import type { Metadata } from 'next';
 import './globals.css';
 
@@ -15,7 +16,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ToastClient>{children}</ToastClient>
+        {/* Use plain children while debugging ToastClient import errors */}
+        {children}
       </body>
     </html>
   );

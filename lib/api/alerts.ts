@@ -92,12 +92,15 @@ export const alertsApi = {
     return resp.data;
   },
 
-  create: async (data: { title: string; body: string; kind?: string; is_read?: boolean; user?: number }): Promise<Alert> => {
-    // Only send the allowed fields to the backend: title, body, kind, is_read, and optional user id
+  create: async (data: { title: string; body: string; kind?: string; is_read?: boolean; user?: number; feedback?: number; [key: string]: any }): Promise<Alert> => {
+    // Only send commonly used fields to the backend and allow an optional `feedback` id
     const payload: any = { title: data.title, body: data.body };
     if (data.kind) payload.kind = data.kind;
     if (typeof data.is_read !== 'undefined') payload.is_read = !!data.is_read;
     if (typeof data.user !== 'undefined') payload.user = data.user;
+    if (typeof data.feedback !== 'undefined') payload.feedback = data.feedback;
+    // pass through any additional developer-supplied fields if needed (be cautious)
+    if (data.response && typeof data.response === 'string') payload.response = data.response;
 
     const endpoints = ['/alerts/'];
 

@@ -131,12 +131,7 @@ export const legalApi = {
   getPrivacy: async (): Promise<string> => {
     // Try multiple endpoint variations
     const endpoints = [
-      '/admin/privacy/',
-      '/privacy/',
-      '/admin/privacy-policy/',
-      '/privacy-policy/',
-      '/admin/legal-content/?type=privacy',
-      '/legal-content/?type=privacy',
+      '/privacy-policies/',
     ];
 
     for (const endpoint of endpoints) {
@@ -183,14 +178,8 @@ export const legalApi = {
   updatePrivacy: async (content: string): Promise<LegalContent> => {
     // Try multiple endpoint variations
     const endpoints = [
-      { url: '/admin/privacy/', method: 'PUT' as const },
-      { url: '/admin/privacy/', method: 'POST' as const },
-      { url: '/privacy/', method: 'PUT' as const },
-      { url: '/privacy/', method: 'POST' as const },
-      { url: '/admin/privacy-policy/', method: 'PUT' as const },
-      { url: '/admin/privacy-policy/', method: 'POST' as const },
-      { url: '/admin/legal-content/', method: 'PUT' as const, data: { type: 'privacy', content } },
-      { url: '/admin/legal-content/', method: 'POST' as const, data: { type: 'privacy', content } },
+      { url: '/privacy-policies/', method: 'PUT' as const },
+      { url: '/privacy-policies/', method: 'PUT' as const, data: { type: 'privacy', content } },
     ];
 
     for (const endpoint of endpoints) {
@@ -253,7 +242,7 @@ export const legalApi = {
   },
   // CRUD helpers for privacy policies (resource-style endpoints)
   listPrivacy: async (): Promise<LegalContent[]> => {
-    const candidates = ['/privacy-policies/', '/privacy-policy/', '/privacy/'];
+    const candidates = ['/privacy-policies/'];
     for (const url of candidates) {
       try {
         const resp = await apiClient.get<any>(url);
@@ -276,9 +265,7 @@ export const legalApi = {
       const resp = await apiClient.post<LegalContent>('/privacy-policies/', payload);
       return resp.data;
     } catch (e: any) {
-      // fallback to singular
-      const resp = await apiClient.post<LegalContent>('/privacy-policy/', payload);
-      return resp.data;
+      throw e;
     }
   },
 
