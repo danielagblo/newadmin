@@ -34,23 +34,39 @@ export default function UsersPage() {
     setLoading(true);
     setError(null);
     try {
-      console.log('Fetching users with search term:', searchTerm || 'none');
+      console.log('🔄 Fetching users with search term:', searchTerm || 'none');
+      console.log('🔍 API Configuration:', {
+        API_URL: process.env.NEXT_PUBLIC_API_URL,
+        API_BASE: process.env.NEXT_PUBLIC_API_BASE,
+        hasAuthToken: typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : 'N/A'
+      });
+      
       const data = await usersApi.list(searchTerm || undefined);
-      console.log('Users fetched from API:', data);
-      console.log('Users data type:', typeof data);
-      console.log('Is array?', Array.isArray(data));
+      console.log('📦 Users fetched from API:', data);
+      console.log('📊 Users data type:', typeof data);
+      console.log('📊 Is array?', Array.isArray(data));
+      console.log('📊 Data length:', Array.isArray(data) ? data.length : 'N/A');
       
       const usersArray = Array.isArray(data) ? data : [];
-      console.log(`Setting ${usersArray.length} users to state`);
+      console.log(`✅ Setting ${usersArray.length} users to state`);
       
       if (usersArray.length > 0) {
-        console.log('Sample user:', usersArray[0]);
+        console.log('👤 Sample user:', usersArray[0]);
+        console.log('👤 Sample user keys:', Object.keys(usersArray[0]));
+      } else {
+        console.warn('⚠️ No users in response!');
+        console.warn('💡 Check browser Network tab to see the actual API response');
+        console.warn('💡 Check browser Console for endpoint errors');
       }
       
       setUsers(usersArray);
       
       if (usersArray.length === 0 && !searchTerm) {
-        console.warn('No users found. This might be normal if there are no users in the database.');
+        console.warn('⚠️ No users found. Check:');
+        console.warn('  1. Browser Network tab - is the API call succeeding?');
+        console.warn('  2. Browser Console - any endpoint errors?');
+        console.warn('  3. Django admin - do users actually exist?');
+        console.warn('  4. Authentication - is auth token valid?');
       }
     } catch (error: any) {
       console.error('Error fetching users:', error);
