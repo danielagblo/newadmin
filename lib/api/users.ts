@@ -25,8 +25,12 @@ export const usersApi = {
         const response = await apiClient.get<User[] | PaginatedResponse<User>>(endpoint, { params });
         console.log(`✅ Successfully fetched from ${endpoint}`);
         console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
-        console.log(`📊 Response data length:`, Array.isArray(response.data) ? response.data.length : 
-                    (response.data?.results ? response.data.results.length : 'N/A'));
+        const dataLength = Array.isArray(response.data) 
+          ? response.data.length 
+          : (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data)
+            ? (response.data as PaginatedResponse<User>).results?.length || 0
+            : 'N/A';
+        console.log(`📊 Response data length:`, dataLength);
         
         // Log sample of response to help debug
         if (Array.isArray(response.data) && response.data.length > 0) {
