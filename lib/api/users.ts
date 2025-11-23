@@ -11,19 +11,26 @@ export const usersApi = {
     
     // Use the correct endpoint from API docs: https://api.oysloe.com/api/docs/#/
     // Per API documentation, the endpoint is: GET /api-v1/admin/users/
-    const endpoint = '/admin/users/';
+    // Try /admin/users/ first, then fallback to /users/ if empty
+    const endpoints = ['/admin/users/', '/users/'];
+    let lastError: any = null;
     
-    try {
-      console.log(`🔍 Fetching users from ${endpoint} with params:`, params);
-      const response = await apiClient.get<User[] | PaginatedResponse<User>>(endpoint, { params });
-      console.log(`✅ Successfully fetched from ${endpoint}`);
-      console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
-      const dataLength = Array.isArray(response.data) 
-        ? response.data.length 
-        : (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data)
-          ? (response.data as PaginatedResponse<User>).results?.length || 0
-          : 'N/A';
-      console.log(`📊 Response data length:`, dataLength);
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔍 Trying endpoint: ${endpoint} with params:`, params);
+        console.log(`🔗 Full URL: ${apiClient.defaults.baseURL}${endpoint}`);
+        const response = await apiClient.get<User[] | PaginatedResponse<User>>(endpoint, { params });
+        console.log(`✅ Successfully fetched from ${endpoint}`);
+        console.log(`📊 Response status: ${response.status}`);
+        console.log(`📊 Response data type:`, Array.isArray(response.data) ? 'Array' : typeof response.data);
+        console.log(`📊 Response data:`, JSON.stringify(response.data, null, 2).substring(0, 500));
+        
+        const dataLength = Array.isArray(response.data) 
+          ? response.data.length 
+          : (!Array.isArray(response.data) && response.data && typeof response.data === 'object' && 'results' in response.data)
+            ? (response.data as PaginatedResponse<User>).results?.length || 0
+            : 'N/A';
+        console.log(`📊 Response data length:`, dataLength);
       
       // Log sample of response to help debug
       if (Array.isArray(response.data) && response.data.length > 0) {
@@ -74,10 +81,10 @@ export const usersApi = {
           let allUsers = [...paginatedData.results];
           console.log(`✅ Fetched ${allUsers.length} users from ${endpoint} page 1 (paginated format)`);
           
-          // If empty results, accept it as valid (endpoint exists, just no users)
+          // If empty results, try next endpoint
           if (allUsers.length === 0 && (!paginatedData.count || paginatedData.count === 0)) {
-            console.log(`✅ ${endpoint} returned empty paginated results - endpoint exists but no users found`);
-            return [];
+            console.log(`⚠️ ${endpoint} returned empty paginated results - trying next endpoint...`);
+            continue;
           }
           
           // Validate users - be very lenient (accept any object)
@@ -148,36 +155,54 @@ export const usersApi = {
           return allUsers;
         }
         
-      // If response format is unexpected
-      console.warn(`⚠️ Unexpected response format from ${endpoint}:`, response.data);
-      return [];
-      
-    } catch (error: any) {
-      const status = error.response?.status;
-      const statusText = error.response?.statusText;
-      const data = error.response?.data;
-      
-      console.error(`❌ ${endpoint} failed:`, {
-        status,
-        statusText,
-        message: error.message,
-        data: data ? (typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 200)) : 'No data'
-      });
-      
-      if (status === 401) {
-        console.error('💡 Authentication failed (401) - please log out and log in again');
-        throw new Error('Authentication failed. Please log out and log in again.');
-      } else if (status === 403) {
-        console.error('💡 Access denied (403) - you may not have permission to view users');
-        throw new Error('Access denied. You may not have permission to view users.');
-      } else       if (status === 404) {
-        console.error('💡 Endpoint not found (404)');
-        console.error('💡 Verify /api-v1/admin/users/ exists in API docs: https://api.oysloe.com/api/docs/#/');
-        throw new Error(`Endpoint not found. Please verify /api-v1/admin/users/ exists in your Django backend. Check API docs: https://api.oysloe.com/api/docs/#/`);
+        // If response format is unexpected, try next endpoint
+        console.warn(`⚠️ Unexpected response format from ${endpoint}:`, response.data);
+        continue;
+        
+      } catch (error: any) {
+        const status = error.response?.status;
+        const statusText = error.response?.statusText;
+        const data = error.response?.data;
+        
+        console.error(`❌ ${endpoint} failed:`, {
+          status,
+          statusText,
+          message: error.message,
+          data: data ? (typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 200)) : 'No data'
+        });
+        
+        // Don't retry on auth errors - they'll fail on all endpoints
+        if (status === 401) {
+          console.error('💡 Authentication failed (401) - please log out and log in again');
+          throw new Error('Authentication failed. Please log out and log in again.');
+        } else if (status === 403) {
+          console.error('💡 Access denied (403) - you may not have permission to view users');
+          throw new Error('Access denied. You may not have permission to view users.');
+        }
+        
+        // For 404 or other errors, try next endpoint
+        lastError = error;
+        continue;
       }
-      
-      throw error;
     }
+    
+    // If all endpoints failed or returned empty
+    if (lastError) {
+      const status = lastError.response?.status;
+      if (status === 404) {
+        console.error('💡 All endpoints returned 404');
+        console.error('💡 Verify /api-v1/admin/users/ or /api-v1/users/ exists in API docs: https://api.oysloe.com/api/docs/#/');
+        throw new Error(`Endpoints not found. Please verify the users endpoint exists in your Django backend. Check API docs: https://api.oysloe.com/api/docs/#/`);
+      }
+    }
+    
+    console.warn('⚠️ All endpoints returned empty data or failed');
+    console.warn('💡 Users exist in Django admin but API returned no data');
+    console.warn('💡 This might indicate:');
+    console.warn('   1. Endpoint returns filtered results (only current user)');
+    console.warn('   2. Permissions issue - endpoint exists but returns empty');
+    console.warn('   3. Wrong endpoint path');
+    return [];
   },
 
   get: async (id: number): Promise<User> => {
