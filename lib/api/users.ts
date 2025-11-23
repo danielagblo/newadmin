@@ -12,7 +12,7 @@ export const usersApi = {
     // Use the correct endpoint from API docs: https://api.oysloe.com/api/docs/#/
     // Per API documentation, the endpoint is: GET /api-v1/admin/users/
     // Try /admin/users/ first, then fallback to /users/ if empty
-    const endpoints = ['/admin/users/', '/users/'];
+    const endpoints = ['/admin/users/'];
     let lastError: any = null;
     
     for (const endpoint of endpoints) {

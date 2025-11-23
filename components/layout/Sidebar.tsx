@@ -47,11 +47,11 @@ export const Sidebar: React.FC = () => {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-col w-64 bg-gray-900 text-white">
+    <div className="flex flex-col w-64 bg-gray-900 text-white h-screen">
       <div className="flex items-center justify-center h-16 bg-gray-800">
         <h1 className="text-xl font-bold">Oysloe Admin</h1>
       </div>
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto no-scrollbar">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
           return (

@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { chatRoomsApi } from '@/lib/api/chats';
 import { usersApi } from '@/lib/api/users';
 import { ChatRoom, Message, User } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, MessageSquare, RefreshCw, Search } from 'lucide-react';
+import { MessageSquare, Plus, RefreshCw, Search } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 export default function ChatRoomsPage() {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -51,11 +51,11 @@ export default function ChatRoomsPage() {
       const params: any = {
         ordering: '-created_at', // Order by newest first
       };
-      
+
       if (searchTerm) {
         params.search = searchTerm;
       }
-      
+
       const data = await chatRoomsApi.list(params);
       setChatRooms(Array.isArray(data) ? data : []);
     } catch (error: any) {
@@ -126,7 +126,18 @@ export default function ChatRoomsPage() {
       if (editingRoom) {
         await chatRoomsApi.update(editingRoom.id, formData);
       } else {
-        await chatRoomsApi.create(formData);
+        // Generate a room UUID client-side and send only the allowed fields.
+        // The backend does not accept `members` in the create payload, so
+        // exclude it here and rely on separate membership endpoints if needed.
+        const roomId = (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function')
+          ? (crypto as any).randomUUID()
+          : undefined;
+        const roomPayload: any = {
+          name: formData.name,
+          is_group: formData.is_group,
+        };
+        if (roomId) roomPayload.room_id = roomId;
+        await chatRoomsApi.create(roomPayload);
       }
       setIsModalOpen(false);
       fetchChatRooms();
@@ -144,9 +155,8 @@ export default function ChatRoomsPage() {
       key: 'is_group',
       header: 'Type',
       render: (room: ChatRoom) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          room.is_group ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${room.is_group ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+          }`}>
           {room.is_group ? 'Group' : 'Direct'}
         </span>
       ),
@@ -180,9 +190,8 @@ export default function ChatRoomsPage() {
       key: 'total_unread',
       header: 'Unread',
       render: (room: ChatRoom) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          (room.total_unread || 0) > 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${(room.total_unread || 0) > 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+          }`}>
           {room.total_unread || 0}
         </span>
       ),
@@ -301,47 +310,47 @@ export default function ChatRoomsPage() {
                   // Group users by verification status and other criteria
                   const now = new Date();
                   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                  
+
                   // Verified users who have submitted ads
-                  const verifiedWithAds = users.filter(u => 
-                    u.admin_verified && 
+                  const verifiedWithAds = users.filter(u =>
+                    u.admin_verified &&
                     new Date(u.created_at) <= thirtyDaysAgo &&
                     u.is_active &&
                     ((u.active_ads && u.active_ads > 0) || (u.taken_ads && u.taken_ads > 0))
                   );
-                  
+
                   // Verified users who haven't submitted any ads
-                  const verifiedNoAds = users.filter(u => 
-                    u.admin_verified && 
+                  const verifiedNoAds = users.filter(u =>
+                    u.admin_verified &&
                     new Date(u.created_at) <= thirtyDaysAgo &&
                     u.is_active &&
                     (!u.active_ads || u.active_ads === 0) &&
                     (!u.taken_ads || u.taken_ads === 0)
                   );
-                  
+
                   const unverifiedUsers = users.filter(u => !u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo && u.is_active);
                   const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo && u.is_active);
-                  
+
                   // User Level Groups
                   const diamondUsers = users.filter(u => u.level === 'DIAMOND' && u.is_active);
                   const goldUsers = users.filter(u => u.level === 'GOLD' && u.is_active);
                   const silverUsers = users.filter(u => u.level === 'SILVER' && u.is_active);
-                  
+
                   // Business Users
                   const businessUsers = users.filter(u => u.business_name && u.business_name.trim() !== '' && u.is_active);
-                  
+
                   // Fully Verified
                   const fullyVerifiedUsers = users.filter(u => u.phone_verified && u.email_verified && u.is_active);
-                  
+
                   // Staff/Admin Users
                   const staffUsers = users.filter(u => (u.is_staff || u.is_superuser) && u.is_active);
-                  
+
                   // Top 100 Users with Most Active Ads
                   const topActiveAdsUsers = users
                     .filter(u => u.is_active && u.active_ads && u.active_ads > 0)
                     .sort((a, b) => (b.active_ads || 0) - (a.active_ads || 0))
                     .slice(0, 100);
-                  
+
                   const toggleGroup = (groupUserIds: number[]) => {
                     const allSelected = groupUserIds.every(id => formData.members.includes(id));
                     if (allSelected) {
@@ -356,7 +365,7 @@ export default function ChatRoomsPage() {
                       });
                     }
                   };
-                  
+
                   const toggleUser = (userId: number) => {
                     if (formData.members.includes(userId)) {
                       setFormData({
@@ -370,7 +379,7 @@ export default function ChatRoomsPage() {
                       });
                     }
                   };
-                  
+
                   return (
                     <>
                       {/* Verified Users with Ads */}
@@ -406,7 +415,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Verified Users without Ads */}
                       {verifiedNoAds.length > 0 && (
                         <div className="space-y-2">
@@ -440,7 +449,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Unverified Users */}
                       {unverifiedUsers.length > 0 && (
                         <div className="space-y-2">
@@ -474,7 +483,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* New Users */}
                       {newUsers.length > 0 && (
                         <div className="space-y-2">
@@ -511,7 +520,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Diamond Level Users */}
                       {diamondUsers.length > 0 && (
                         <div className="space-y-2">
@@ -545,7 +554,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Gold Level Users */}
                       {goldUsers.length > 0 && (
                         <div className="space-y-2">
@@ -579,7 +588,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Silver Level Users */}
                       {silverUsers.length > 0 && (
                         <div className="space-y-2">
@@ -613,7 +622,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Business Users */}
                       {businessUsers.length > 0 && (
                         <div className="space-y-2">
@@ -647,7 +656,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Fully Verified Users */}
                       {fullyVerifiedUsers.length > 0 && (
                         <div className="space-y-2">
@@ -681,7 +690,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Staff/Admin Users */}
                       {staffUsers.length > 0 && (
                         <div className="space-y-2">
@@ -716,7 +725,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Top 100 Users with Most Active Ads */}
                       {topActiveAdsUsers.length > 0 && (
                         <div className="space-y-2">
@@ -750,7 +759,7 @@ export default function ChatRoomsPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       {formData.members.length > 0 && (
                         <div className="pt-2 border-t border-gray-200">
                           <p className="text-sm font-medium text-gray-700">
@@ -802,7 +811,7 @@ export default function ChatRoomsPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <div className="font-medium text-sm">
-                          {typeof message.sender === 'object' 
+                          {typeof message.sender === 'object'
                             ? (message.sender.name || message.sender.email || 'Unknown')
                             : `User ${message.sender}`}
                         </div>

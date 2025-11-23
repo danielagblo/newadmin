@@ -6,6 +6,7 @@ import { DataTable } from '@/components/ui/DataTable';
 // No create form — admin-only approve/reject UI
 import { accountDeleteRequestsApi } from '@/lib/api/accountDeleteRequests';
 import { AccountDeleteRequest } from '@/lib/types';
+import { format } from 'date-fns';
 import { useCallback, useEffect, useState } from 'react';
 
 export default function AccountDeleteRequestsPage() {
@@ -73,11 +74,33 @@ export default function AccountDeleteRequestsPage() {
 
     const columns = [
         { key: 'id', header: 'ID' },
+        {
+            key: 'user',
+            header: 'User',
+            render: (row: AccountDeleteRequest) => {
+                const u: any = (row as any).user;
+                if (!u) return '-';
+                if (typeof u === 'object') return u.name || u.email || `User ${u.id}`;
+                return `User ${u}`;
+            },
+        },
         { key: 'reason', header: 'Reason' },
         { key: 'status', header: 'Status' },
         { key: 'admin_comment', header: 'Admin Comment' },
-        { key: 'created_at', header: 'Created' },
-        { key: 'processed_at', header: 'Processed' },
+        {
+            key: 'created_at',
+            header: 'Created',
+            render: (row: AccountDeleteRequest) => {
+                return row.created_at ? format(new Date(row.created_at), 'MMM dd, yyyy HH:mm') : '-';
+            },
+        },
+        {
+            key: 'processed_at',
+            header: 'Processed',
+            render: (row: AccountDeleteRequest) => {
+                return row.processed_at ? format(new Date(row.processed_at), 'MMM dd, yyyy HH:mm') : '-';
+            },
+        },
         {
             key: 'actions',
             header: 'Actions',

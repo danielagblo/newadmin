@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
-import { Textarea } from '@/components/ui/Textarea';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { Textarea } from '@/components/ui/Textarea';
 import { feedbackApi } from '@/lib/api/feedback';
-import { Feedback, User } from '@/lib/types';
+import { Feedback } from '@/lib/types';
 import { format } from 'date-fns';
-import { MessageSquare, Eye, Trash2, CheckCircle, XCircle, Clock, Archive, Search } from 'lucide-react';
+import { Archive, CheckCircle, Eye, MessageSquare, Search } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
 export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -31,24 +31,24 @@ export default function FeedbackPage() {
       const params: any = {
         ordering: '-created_at', // Order by newest first
       };
-      
+
       if (statusFilter !== 'all') {
         params.status = statusFilter;
       }
-      
+
       if (searchTerm) {
         params.search = searchTerm;
       }
-      
+
       const data = await feedbackApi.list(params);
       const feedbacksArray = Array.isArray(data) ? data : [];
       setFeedbacks(feedbacksArray);
     } catch (error: any) {
       console.error('Error fetching feedbacks:', error);
-      
+
       let errorMessage = 'Failed to fetch feedbacks';
       let errorDetails = '';
-      
+
       if (error?.response?.status === 404) {
         errorMessage = 'Feedbacks endpoint not found (404)';
         errorDetails = `The feedbacks API endpoint does not exist on your Django backend.\n\n` +
@@ -62,15 +62,15 @@ export default function FeedbackPage() {
         errorDetails = 'You may not have permission to view feedbacks.';
       } else if (error?.response?.data) {
         errorMessage = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorDetails = error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
         errorMessage = 'Error';
         errorDetails = error.message;
       }
-      
+
       setError(`${errorMessage}\n\n${errorDetails}`);
       setFeedbacks([]);
     } finally {
@@ -105,7 +105,7 @@ export default function FeedbackPage() {
 
   const handleSubmitResponse = async () => {
     if (!selectedFeedback) return;
-    
+
     try {
       await feedbackApi.update(selectedFeedback.id, {
         admin_response: adminResponse,
@@ -124,7 +124,7 @@ export default function FeedbackPage() {
     if (!window.confirm(`Are you sure you want to delete this feedback?`)) {
       return;
     }
-    
+
     try {
       await feedbackApi.delete(feedback.id);
       fetchFeedbacks();
@@ -141,9 +141,9 @@ export default function FeedbackPage() {
       RESOLVED: 'bg-green-100 text-green-800',
       ARCHIVED: 'bg-gray-100 text-gray-800',
     };
-    
+
     const color = statusColors[status || 'PENDING'] || 'bg-gray-100 text-gray-800';
-    
+
     return (
       <span className={`px-2 py-1 rounded text-xs font-medium ${color}`}>
         {status || 'PENDING'}
@@ -166,7 +166,6 @@ export default function FeedbackPage() {
   };
 
   const columns = [
-    { key: 'id', header: 'ID' },
     {
       key: 'user',
       header: 'User',
@@ -180,11 +179,6 @@ export default function FeedbackPage() {
       ),
     },
     {
-      key: 'subject',
-      header: 'Subject',
-      render: (feedback: Feedback) => feedback.subject || '-',
-    },
-    {
       key: 'message',
       header: 'Message',
       render: (feedback: Feedback) => (
@@ -194,11 +188,6 @@ export default function FeedbackPage() {
       ),
     },
     {
-      key: 'category',
-      header: 'Category',
-      render: (feedback: Feedback) => feedback.category || '-',
-    },
-    {
       key: 'status',
       header: 'Status',
       render: (feedback: Feedback) => getStatusBadge(feedback.status),
@@ -206,7 +195,16 @@ export default function FeedbackPage() {
     {
       key: 'created_at',
       header: 'Created',
-      render: (feedback: Feedback) => format(new Date(feedback.created_at), 'MMM dd, yyyy HH:mm'),
+      render: (feedback: Feedback) => feedback.created_at ? format(new Date(feedback.created_at), 'MMM dd, yyyy HH:mm') : '-',
+    },
+    {
+      key: 'response',
+      header: 'Response',
+      render: (feedback: Feedback) => feedback.admin_response ? (
+        <div className="text-sm whitespace-pre-wrap max-w-md">{feedback.admin_response}</div>
+      ) : (
+        <div className="text-sm text-gray-500">-</div>
+      ),
     },
   ];
 
@@ -314,33 +312,33 @@ export default function FeedbackPage() {
                   )}
                 </div>
               </div>
-              
+
               {selectedFeedback.subject && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
                   <div className="text-sm text-gray-900">{selectedFeedback.subject}</div>
                 </div>
               )}
-              
+
               {selectedFeedback.category && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <div className="text-sm text-gray-900">{selectedFeedback.category}</div>
                 </div>
               )}
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <div>{getStatusBadge(selectedFeedback.status)}</div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
                 <div className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 p-3 rounded">
                   {selectedFeedback.message}
                 </div>
               </div>
-              
+
               {selectedFeedback.admin_response && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Admin Response</label>
@@ -349,14 +347,14 @@ export default function FeedbackPage() {
                   </div>
                 </div>
               )}
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Created</label>
                 <div className="text-sm text-gray-900">
                   {format(new Date(selectedFeedback.created_at), 'MMM dd, yyyy HH:mm:ss')}
                 </div>
               </div>
-              
+
               <div className="flex gap-2 pt-4">
                 <Button
                   onClick={() => {
@@ -393,14 +391,14 @@ export default function FeedbackPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">User</label>
                 <div className="text-sm text-gray-900">{getUserName(selectedFeedback)}</div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Original Message</label>
                 <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded max-h-32 overflow-y-auto">
                   {selectedFeedback.message}
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Admin Response</label>
                 <Textarea
@@ -410,7 +408,7 @@ export default function FeedbackPage() {
                   rows={6}
                 />
               </div>
-              
+
               <div className="flex gap-2 pt-4">
                 <Button
                   onClick={handleSubmitResponse}
