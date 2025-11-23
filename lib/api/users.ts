@@ -108,10 +108,9 @@ export const usersApi = {
                 const pageData = pageResponse.data;
                 
                 if (pageData.results && Array.isArray(pageData.results)) {
-                  // Validate users from this page - be more lenient
+                  // Validate users from this page - be very lenient (accept any object)
                   const validPageUsers = pageData.results.filter((user: any) => {
-                    const isValid = user && typeof user === 'object' && 
-                                  (user.id !== undefined || user.email !== undefined || user.phone !== undefined || user.pk !== undefined);
+                    const isValid = user && typeof user === 'object';
                     if (!isValid) {
                       console.warn('Invalid user object found on page', currentPage, ':', user);
                     }
@@ -149,53 +148,35 @@ export const usersApi = {
           return allUsers;
         }
         
-        // If response format is unexpected, try next endpoint
-        console.warn(`⚠️ Unexpected response format from ${endpoint}:`, response.data);
-        continue;
-      } catch (error: any) {
-        const status = error.response?.status;
-        const statusText = error.response?.statusText;
-        const data = error.response?.data;
-        
-        console.log(`❌ ${endpoint} failed:`, {
-          status,
-          statusText,
-          message: error.message,
-          data: data ? (typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 200)) : 'No data'
-        });
-        
-        lastError = error;
-        // Try next endpoint
-        continue;
-      }
-    }
-    
-    // If all endpoints failed, provide detailed error message
-    console.error('❌ All users endpoints failed or returned no data');
-    
-    if (lastError) {
-      const status = lastError.response?.status;
-      const message = lastError.response?.data?.detail || lastError.response?.data?.message || lastError.message;
+      // If response format is unexpected
+      console.warn(`⚠️ Unexpected response format from ${endpoint}:`, response.data);
+      return [];
+      
+    } catch (error: any) {
+      const status = error.response?.status;
+      const statusText = error.response?.statusText;
+      const data = error.response?.data;
+      
+      console.error(`❌ ${endpoint} failed:`, {
+        status,
+        statusText,
+        message: error.message,
+        data: data ? (typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 200)) : 'No data'
+      });
       
       if (status === 401) {
         console.error('💡 Authentication failed (401) - please log out and log in again');
+        throw new Error('Authentication failed. Please log out and log in again.');
       } else if (status === 403) {
         console.error('💡 Access denied (403) - you may not have permission to view users');
+        throw new Error('Access denied. You may not have permission to view users.');
       } else if (status === 404) {
-        console.error('💡 Endpoint not found (404) - check if /api-v1/admin/users/ exists in Django backend');
+        console.error('💡 Endpoint not found (404)');
+        console.error('💡 Verify /api-v1/admin/users/ exists in API docs: https://api.oysloe.com/api/docs/#/');
+        throw new Error(`Endpoint not found. Please verify /api-v1/admin/users/ exists in your Django backend. Check API docs: https://api.oysloe.com/api/docs/#/`);
       }
       
-      console.error('💡 Last error details:', {
-        status,
-        message,
-        url: lastError.config?.url,
-        baseURL: lastError.config?.baseURL
-      });
-    }
-    
-    // Return empty array instead of throwing to prevent breaking the UI
-    console.warn('⚠️ Returning empty array - users may exist in Django admin but API endpoints are not accessible');
-    return [];
+      throw error;
   },
 
   get: async (id: number): Promise<User> => {
