@@ -45,20 +45,33 @@ export const usersApi = {
         // Handle array response
         if (Array.isArray(response.data)) {
           console.log(`✅ Fetched ${response.data.length} users from ${endpoint} (array format)`);
-          // Validate user objects - be more lenient with validation
+          
+          // If we get a successful response (even if empty), this endpoint works
+          // Only try other endpoints if this one fails (error thrown)
+          
+          // If empty array, accept it as valid (endpoint exists, just no users)
+          if (response.data.length === 0) {
+            console.log(`✅ ${endpoint} returned empty array - endpoint exists but no users found`);
+            return [];
+          }
+          
+          // Validate user objects - be very lenient (accept any object)
           const validUsers = response.data.filter((user: any) => {
-            // Accept if it's an object with at least id or email or phone
-            const isValid = user && typeof user === 'object' && 
-                          (user.id !== undefined || user.email !== undefined || user.phone !== undefined || user.pk !== undefined);
+            // Accept any non-null object (very lenient validation)
+            const isValid = user && typeof user === 'object';
             if (!isValid) {
-              console.warn('Invalid user object found:', user);
+              console.warn('Invalid user object found (null/undefined):', user);
             }
             return isValid;
           });
           console.log(`✅ Validated ${validUsers.length} valid users out of ${response.data.length}`);
+          
           if (validUsers.length === 0 && response.data.length > 0) {
-            console.warn('⚠️ All users were filtered out! Sample user:', response.data[0]);
+            console.error('❌ All users were filtered out! This should not happen. Sample user:', response.data[0]);
+            // Return empty rather than continue, as this endpoint worked but has invalid data
+            return [];
           }
+          
           return validUsers;
         }
         
@@ -68,19 +81,26 @@ export const usersApi = {
           let allUsers = [...paginatedData.results];
           console.log(`✅ Fetched ${allUsers.length} users from ${endpoint} page 1 (paginated format)`);
           
-          // Validate users - be more lenient with validation
+          // If empty results, accept it as valid (endpoint exists, just no users)
+          if (allUsers.length === 0 && (!paginatedData.count || paginatedData.count === 0)) {
+            console.log(`✅ ${endpoint} returned empty paginated results - endpoint exists but no users found`);
+            return [];
+          }
+          
+          // Validate users - be very lenient (accept any object)
           allUsers = allUsers.filter((user: any) => {
-            // Accept if it's an object with at least id or email or phone
-            const isValid = user && typeof user === 'object' && 
-                          (user.id !== undefined || user.email !== undefined || user.phone !== undefined || user.pk !== undefined);
+            // Accept any non-null object (very lenient validation)
+            const isValid = user && typeof user === 'object';
             if (!isValid) {
-              console.warn('Invalid user object found:', user);
+              console.warn('Invalid user object found (null/undefined):', user);
             }
             return isValid;
           });
           
           if (allUsers.length === 0 && paginatedData.results && paginatedData.results.length > 0) {
-            console.warn('⚠️ All users were filtered out! Sample user from paginated response:', paginatedData.results[0]);
+            console.error('❌ All users were filtered out! This should not happen. Sample user:', paginatedData.results[0]);
+            // Return empty rather than continue, as this endpoint worked but has invalid data
+            return [];
           }
           
           // Fetch all remaining pages if paginated
