@@ -4,8 +4,10 @@ import clsx from 'clsx';
 import {
   Bell,
   CreditCard,
+  FileText,
   FolderTree,
   LayoutDashboard,
+  Lock,
   Mail,
   MapPin,
   MessageCircle,
@@ -41,6 +43,8 @@ const navigation: NavItem[] = [
   { name: 'Feedback', href: '/feedback', icon: MessageCircle },
   { name: 'Account Delete Requests', href: '/account-delete-requests', icon: Users },
   { name: 'Alerts', href: '/alerts', icon: Bell },
+  { name: 'Terms and Conditions', href: '/terms', icon: FileText },
+  { name: 'Privacy Policy', href: '/privacy', icon: Lock },
 ];
 
 export const Sidebar: React.FC = () => {
