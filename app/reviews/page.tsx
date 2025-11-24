@@ -8,7 +8,10 @@ import { Select } from '@/components/ui/Select';
 import { reviewsApi } from '@/lib/api/reviews';
 import { PaginatedResponse, Review } from '@/lib/types';
 import { format } from 'date-fns';
-import { Star } from 'lucide-react';
+import { Star, Eye } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 
 export default function ReviewsPage() {
@@ -90,6 +93,14 @@ export default function ReviewsPage() {
       console.error('Error deleting review:', error);
       window.alert('Failed to delete review');
     }
+  };
+
+  const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+
+  const handleView = (review: Review) => {
+    setSelectedReview(review);
+    setIsViewModalOpen(true);
   };
 
   const columns = [
@@ -193,6 +204,17 @@ export default function ReviewsPage() {
             columns={columns}
             onDelete={handleDelete}
             isLoading={loading}
+            actions={(review: Review) => (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleView(review)}
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded"
+                  title="View"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           />
           {totalPages > 1 && (
             <Pagination
@@ -203,6 +225,64 @@ export default function ReviewsPage() {
               itemsPerPage={20}
             />
           )}
+          <Modal
+            isOpen={isViewModalOpen}
+            onClose={() => setIsViewModalOpen(false)}
+            title={selectedReview ? `Review #${selectedReview.id}` : 'Review'}
+            size="lg"
+          >
+            {selectedReview && (
+              <div className="space-y-4">
+                <div className="flex gap-6">
+                  <div className="w-1/3">
+                    {selectedReview.product?.image ? (
+                      <div className="relative w-full h-48 rounded overflow-hidden">
+                        <Image
+                          src={selectedReview.product.image}
+                          alt={selectedReview.product?.name || 'Product image'}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          style={{ objectFit: 'cover' }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full h-48 bg-gray-100 rounded flex items-center justify-center text-gray-400">
+                        No Image
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-semibold">{selectedReview.product?.name}</h3>
+                    <div className="text-sm text-gray-600">Owner: {selectedReview.product?.owner?.name || '-'}</div>
+                    {selectedReview.product?.price && (
+                      <div className="mt-2 text-sm">Price: {selectedReview.product.price}</div>
+                    )}
+                    {selectedReview.product?.location && (
+                      <div className="mt-1 text-sm">Location: {selectedReview.product.location.name || '-'}</div>
+                    )}
+                    <div className="mt-4">
+                      <div className="text-sm font-medium">Review</div>
+                      <div className="flex items-center mt-2">
+                        {[...Array(5)].map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`h-4 w-4 ${i < (selectedReview.rating || 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+                          />
+                        ))}
+                        <span className="ml-2 text-sm">{selectedReview.rating}</span>
+                      </div>
+                      <div className="mt-2 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">{selectedReview.comment}</div>
+                      <div className="mt-2 text-xs text-gray-500">By: {selectedReview.user?.name || 'Unknown'} — {format(new Date(selectedReview.created_at), 'MMM dd, yyyy')}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={() => setIsViewModalOpen(false)} variant="outline">Close</Button>
+                </div>
+              </div>
+            )}
+          </Modal>
         </div>
       </div>
     </Layout>
