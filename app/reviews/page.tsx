@@ -13,6 +13,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 export default function ReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
+  // keep the raw fetched reviews; we'll apply a client-side owner-name filter as a fallback
+  const [rawReviews, setRawReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -26,18 +28,18 @@ export default function ReviewsPage() {
     setError(null);
     try {
       const params: any = { page: currentPage };
-      if (ratingFilter && ratingFilter !== 'all') params.rating = ratingFilter;
-      if (ownerSearch) params.search = ownerSearch;
       const data = await reviewsApi.list(params);
       console.log('Reviews fetched:', data);
 
       // Handle both paginated and non-paginated responses
       if (Array.isArray(data)) {
+        setRawReviews(data);
         setReviews(data);
         setTotalItems(data.length);
         setTotalPages(1);
       } else {
         const paginatedData = data as PaginatedResponse<Review>;
+        setRawReviews(paginatedData.results || []);
         setReviews(paginatedData.results || []);
         setTotalItems(paginatedData.count || 0);
         setTotalPages(Math.ceil((paginatedData.count || 0) / 20));
@@ -52,7 +54,29 @@ export default function ReviewsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, ratingFilter, ownerSearch]);
+  }, [currentPage]);
+
+  // Apply combined client-side filters (rating + owner) to rawReviews
+  useEffect(() => {
+    // reset to first page when filters change
+    setCurrentPage(1);
+
+    let filtered = rawReviews.slice();
+
+    if (ratingFilter && ratingFilter !== 'all') {
+      const r = Number(ratingFilter);
+      filtered = filtered.filter((rev) => Number(rev.rating) === r);
+    }
+
+    if (ownerSearch) {
+      const q = ownerSearch.toLowerCase();
+      filtered = filtered.filter((rev) => (rev.product?.owner?.name || '').toLowerCase().includes(q));
+    }
+
+    setReviews(filtered);
+    setTotalItems(filtered.length);
+    setTotalPages(Math.max(1, Math.ceil(filtered.length / 20)));
+  }, [rawReviews, ratingFilter, ownerSearch]);
 
   useEffect(() => {
     fetchReviews();
