@@ -124,14 +124,7 @@ export default function ProductDetailPage() {
                     {product.type}
                   </span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Taken</p>
-                  <span className={`inline-block px-2 py-1 rounded text-xs mt-1 ${
-                    product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                  }`}>
-                    {product.is_taken ? 'Yes' : 'No'}
-                  </span>
-                </div>
+                
                 <div>
                   <p className="text-sm text-gray-500">Duration</p>
                   <p className="text-sm font-medium mt-1">{product.duration}</p>
@@ -201,15 +194,7 @@ export default function ProductDetailPage() {
                             Business: {ownerUser.business_name}
                           </p>
                         )}
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={`text-xs px-2 py-0.5 rounded ${
-                            ownerUser.is_active
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {ownerUser.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
+                  
                       </div>
                     </div>
                   </div>

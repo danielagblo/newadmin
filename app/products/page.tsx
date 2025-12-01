@@ -1,23 +1,23 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
-import { Pagination } from '@/components/ui/Pagination';
-import { productsApi } from '@/lib/api/products';
 import { categoriesApi } from '@/lib/api/categories';
 import { locationsApi } from '@/lib/api/locations';
+import { productsApi } from '@/lib/api/products';
 import { usersApi } from '@/lib/api/users';
-import { Product, Category, Location, User, PRODUCT_TYPES, PRODUCT_STATUSES } from '@/lib/types';
-import { format } from 'date-fns';
-import { Plus, Search, MoreVertical, Eye, Edit, Trash2 } from 'lucide-react';
-import Image from 'next/image';
+import { Category, Location, Product, PRODUCT_STATUSES, PRODUCT_TYPES, User } from '@/lib/types';
 import { getImageUrl } from '@/lib/utils';
+import { format } from 'date-fns';
+import { Edit, Eye, MoreVertical, Plus, Search, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -69,7 +69,7 @@ export default function ProductsPage() {
       if (searchTerm) params.search = searchTerm;
 
       const data = await productsApi.list(params);
-      
+
       let allProducts: Product[] = [];
       if (Array.isArray(data)) {
         allProducts = data;
@@ -79,12 +79,12 @@ export default function ProductsPage() {
 
       // Client-side filtering
       let filteredProducts = allProducts;
-      
+
       if (takenFilter !== null) {
         // Filter by taken status
         filteredProducts = filteredProducts.filter(p => p.is_taken === takenFilter);
       }
-      
+
       if (statusFilter) {
         // Filter by status (excluding taken products unless takenFilter is true)
         filteredProducts = filteredProducts.filter(p => {
@@ -196,12 +196,12 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.owner) {
       window.alert('Please select an owner for the product');
       return;
     }
-    
+
     try {
       const submitData: any = {
         ...formData,
@@ -280,12 +280,11 @@ export default function ProductsPage() {
         key: 'status',
         header: 'Status',
         render: (product: Product) => (
-          <span className={`px-2 py-1 rounded text-xs ${
-            product.status === 'ACTIVE' || product.status === 'VERIFIED' ? 'bg-green-100 text-green-800' :
-            product.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-            product.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
+          <span className={`px-2 py-1 rounded text-xs ${product.status === 'ACTIVE' || product.status === 'VERIFIED' ? 'bg-green-100 text-green-800' :
+              product.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                product.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+            }`}>
             {product.status}
           </span>
         ),
@@ -294,9 +293,8 @@ export default function ProductsPage() {
         key: 'is_taken',
         header: 'Taken',
         render: (product: Product) => (
-          <span className={`px-2 py-1 rounded text-xs ${
-            product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-          }`}>
+          <span className={`px-2 py-1 rounded text-xs ${product.is_taken ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+            }`}>
             {product.is_taken ? 'Yes' : 'No'}
           </span>
         ),
@@ -308,7 +306,7 @@ export default function ProductsPage() {
           if (!product.owner) {
             return <span className="text-xs text-gray-400">No owner</span>;
           }
-          
+
           return (
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-gray-900">{product.owner.name}</span>
@@ -323,15 +321,14 @@ export default function ProductsPage() {
           if (!product.owner) {
             return <span className="text-xs text-gray-400">-</span>;
           }
-          
+
           // Look up owner in users list to get verification status
           const ownerUser = users.find(u => u.id === product.owner?.id);
           const isVerified = ownerUser?.admin_verified || false;
-          
+
           return (
-            <span className={`px-2 py-1 rounded text-xs ${
-              isVerified ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-            }`}>
+            <span className={`px-2 py-1 rounded text-xs ${isVerified ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+              }`}>
               {isVerified ? 'Verified' : 'Unverified'}
             </span>
           );
@@ -406,7 +403,7 @@ export default function ProductsPage() {
               | Total: {totalItems} | Page {currentPage} of {totalPages}
             </div>
           )}
-          
+
           {/* Filter Tabs */}
           <div className="mb-4 border-b border-gray-200">
             <nav className="-mb-px flex space-x-8 overflow-x-auto">
@@ -416,11 +413,10 @@ export default function ProductsPage() {
                   setTakenFilter(null);
                   setCurrentPage(1);
                 }}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  statusFilter === null && takenFilter === null
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${statusFilter === null && takenFilter === null
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
+                  }`}
               >
                 All
               </button>
@@ -432,11 +428,10 @@ export default function ProductsPage() {
                     setTakenFilter(null);
                     setCurrentPage(1);
                   }}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                    statusFilter === status && takenFilter === null
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${statusFilter === status && takenFilter === null
                       ? 'border-primary-500 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   {status}
                 </button>
@@ -447,11 +442,10 @@ export default function ProductsPage() {
                   setTakenFilter(true);
                   setCurrentPage(1);
                 }}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  takenFilter === true
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${takenFilter === true
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
+                  }`}
               >
                 Taken
               </button>
@@ -531,37 +525,21 @@ export default function ProductsPage() {
                             }))}
                           />
                         </div>
-                          <div>
-                          {!product.is_taken && (
-                            <>
-                              <div className="border-t border-gray-100 my-1" />
-                              <button
-                                onClick={() => {
-                                  handleMarkAsTaken(product);
-                                  setOpenDropdown(null);
-                                }}
-                                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                              >
-                                Mark as Taken
-                              </button>
-                            </>
-                          )}
-                        </div>
                       </div>
-                        <div className="border-t border-gray-100 my-1" />
-                        <button
-                          onClick={() => {
-                            if (window.confirm('Are you sure you want to delete this product?')) {
-                              handleDelete(product);
-                            }
-                            setOpenDropdown(null);
-                          }}
-                          className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </button>
-                      </div>
+                      <div className="border-t border-gray-100 my-1" />
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to delete this product?')) {
+                            handleDelete(product);
+                          }
+                          setOpenDropdown(null);
+                        }}
+                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
