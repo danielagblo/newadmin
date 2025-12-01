@@ -314,8 +314,9 @@ export const featuresApi = {
   // Possible feature values endpoints
   listPossibleValues: async (feature?: number): Promise<any[]> => {
     const params: any = feature ? { feature } : {};
-    const response = await apiClient.get<any[]>('/possible-feature-values/', { params });
-    return Array.isArray(response.data) ? response.data : (response.data.results || []);
+    const response = await apiClient.get<any[] | { results: any[]; next?: string }>('/possible-feature-values/', { params });
+    const data = response.data as any;
+    return Array.isArray(data) ? data : (data.results || []);
   },
 
   createPossibleValue: async (data: { feature: number; value: string }): Promise<any> => {
