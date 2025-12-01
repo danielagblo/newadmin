@@ -1,5 +1,5 @@
+import { Category, CreateCategoryForm, CreateSubCategoryForm, Feature, SubCategory } from '../types';
 import apiClient from './config';
-import { Category, SubCategory, Feature, CreateCategoryForm, CreateSubCategoryForm } from '../types';
 
 export const categoriesApi = {
   list: async (): Promise<Category[]> => {
@@ -310,6 +310,17 @@ export const featuresApi = {
 
   delete: async (id: number): Promise<void> => {
     await apiClient.delete(`/features/${id}/`);
+  },
+  // Possible feature values endpoints
+  listPossibleValues: async (feature?: number): Promise<any[]> => {
+    const params: any = feature ? { feature } : {};
+    const response = await apiClient.get<any[]>('/possible-feature-values/', { params });
+    return Array.isArray(response.data) ? response.data : (response.data.results || []);
+  },
+
+  createPossibleValue: async (data: { feature: number; value: string }): Promise<any> => {
+    const response = await apiClient.post('/possible-feature-values/', data);
+    return response.data;
   },
 };
 

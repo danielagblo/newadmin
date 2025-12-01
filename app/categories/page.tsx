@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
-import { Textarea } from '@/components/ui/Textarea';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
-import { categoriesApi, subCategoriesApi, featuresApi } from '@/lib/api/categories';
-import { Category, SubCategory, Feature } from '@/lib/types';
+import { Textarea } from '@/components/ui/Textarea';
+import { categoriesApi, featuresApi, subCategoriesApi } from '@/lib/api/categories';
+import { Category, Feature, SubCategory } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, ChevronDown, ChevronRight, Edit, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit, Plus, Trash2, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -54,23 +54,23 @@ export default function CategoriesPage() {
       const data = await categoriesApi.list();
       console.log('Categories fetched:', data);
       const categoriesArray = Array.isArray(data) ? data : [];
-      
+
       // Check if subcategories are already included in the response
       const hasNestedSubcategories = categoriesArray.some(cat => cat.subcategories && cat.subcategories.length > 0);
-      
+
       if (!hasNestedSubcategories) {
         console.log('Subcategories not included in categories response, fetching separately...');
         // Fetch all subcategories separately
         try {
           const allSubCategories = await subCategoriesApi.list();
           console.log('All subcategories fetched:', allSubCategories);
-          
+
           // Map subcategories to their categories
           const categoriesWithSubcategories = categoriesArray.map(category => ({
             ...category,
             subcategories: allSubCategories.filter(sub => sub.category === category.id)
           }));
-          
+
           // For each subcategory, fetch its features
           const categoriesWithFeatures = await Promise.all(
             categoriesWithSubcategories.map(async (category) => {
@@ -78,9 +78,23 @@ export default function CategoriesPage() {
                 (category.subcategories || []).map(async (subcategory) => {
                   try {
                     const features = await featuresApi.list(subcategory.id);
+                    // fetch possible values for each feature and attach as `possible_values`
+                    const featuresWithValues = await Promise.all(
+                      (features || []).map(async (f) => {
+                        try {
+                          const pv = await featuresApi.listPossibleValues(f.id);
+                          const values = pv.map((p: any) => (typeof p === 'string' ? p : p.value || '')).filter(Boolean);
+                          return { ...f, possible_values: values };
+                        } catch (err) {
+                          console.error('Error fetching possible values for feature', f.id, err);
+                          return { ...f, possible_values: f.possible_values || [] };
+                        }
+                      })
+                    );
+
                     return {
                       ...subcategory,
-                      features: features || []
+                      features: featuresWithValues || []
                     };
                   } catch (error) {
                     console.error(`Error fetching features for subcategory ${subcategory.id}:`, error);
@@ -97,7 +111,7 @@ export default function CategoriesPage() {
               };
             })
           );
-          
+
           setCategories(categoriesWithFeatures);
           console.log('Categories with subcategories and features:', categoriesWithFeatures);
         } catch (subError: any) {
@@ -115,9 +129,23 @@ export default function CategoriesPage() {
                 category.subcategories.map(async (subcategory) => {
                   try {
                     const features = await featuresApi.list(subcategory.id);
+                    // Attach possible values to each feature
+                    const featuresWithValues = await Promise.all(
+                      (features || []).map(async (f) => {
+                        try {
+                          const pv = await featuresApi.listPossibleValues(f.id);
+                          const values = pv.map((p: any) => (typeof p === 'string' ? p : p.value || '')).filter(Boolean);
+                          return { ...f, possible_values: values };
+                        } catch (err) {
+                          console.error('Error fetching possible values for feature', f.id, err);
+                          return { ...f, possible_values: f.possible_values || [] };
+                        }
+                      })
+                    );
+
                     return {
                       ...subcategory,
-                      features: features || []
+                      features: featuresWithValues || []
                     };
                   } catch (error) {
                     console.error(`Error fetching features for subcategory ${subcategory.id}:`, error);
@@ -138,7 +166,7 @@ export default function CategoriesPage() {
         );
         setCategories(categoriesWithFeatures);
       }
-      
+
       if (categoriesArray.length === 0) {
         console.warn('No categories found. The API might return empty data or the endpoint might not exist.');
       }
@@ -146,10 +174,10 @@ export default function CategoriesPage() {
       console.error('Error fetching categories:', error);
       console.error('Error response:', error?.response);
       console.error('Error status:', error?.response?.status);
-      
+
       let errorMessage = 'Failed to fetch categories';
       let errorDetails = '';
-      
+
       if (error?.response?.status === 404) {
         errorMessage = 'Categories endpoint not found (404)';
         errorDetails = `The categories API endpoint does not exist on your Django backend.\n\n` +
@@ -163,15 +191,15 @@ export default function CategoriesPage() {
         errorDetails = 'You may not have permission to view categories.';
       } else if (error?.response?.data) {
         errorMessage = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorDetails = error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
         errorMessage = 'Error';
         errorDetails = error.message;
       }
-      
+
       setError(`${errorMessage}\n\n${errorDetails}`);
       setCategories([]);
     } finally {
@@ -304,6 +332,7 @@ export default function CategoriesPage() {
       possible_values: [],
     });
     setNewValue('');
+    // when creating a new feature we don't yet have persisted possible values
     setIsFeatureModalOpen(true);
   };
 
@@ -317,14 +346,68 @@ export default function CategoriesPage() {
       possible_values: feature.possible_values || [],
     });
     setNewValue('');
+    // fetch authoritative possible values from API if available
+    (async () => {
+      try {
+        const pv = await featuresApi.listPossibleValues(feature.id);
+        // pv items may be objects { id, feature, value } — map to strings
+        const values = pv.map((p: any) => (typeof p === 'string' ? p : p.value || '')).filter(Boolean);
+        setFeatureFormData((prev) => ({ ...prev, possible_values: values }));
+        // also update categories state so the list view shows the fetched values
+        setCategories((prevCats) =>
+          prevCats.map((cat) => ({
+            ...cat,
+            subcategories: (cat.subcategories || []).map((sub) => ({
+              ...sub,
+              features: (sub.features || []).map((f) => (f.id === feature.id ? { ...f, possible_values: values } : f)),
+            })),
+          }))
+        );
+      } catch (err) {
+        // keep existing possible_values if fetch fails
+        console.error('Failed to fetch possible values for feature', feature.id, err);
+      }
+    })();
     setIsFeatureModalOpen(true);
   };
 
   const handleAddValue = () => {
-    if (newValue.trim() && !featureFormData.possible_values.includes(newValue.trim())) {
+    const trimmed = newValue.trim();
+    if (!trimmed) return;
+    if (featureFormData.possible_values.includes(trimmed)) {
+      setNewValue('');
+      return;
+    }
+
+    // If editing an existing feature, persist the possible value via API
+    if (editingFeature && editingFeature.id) {
+      (async () => {
+        try {
+          const created = await featuresApi.createPossibleValue({ feature: editingFeature.id, value: trimmed });
+          const val = typeof created === 'string' ? created : created.value || trimmed;
+          setFeatureFormData((prev) => ({ ...prev, possible_values: [...prev.possible_values, val] }));
+          // update categories state so the new value appears in the feature list immediately
+          setCategories((prevCats) =>
+            prevCats.map((cat) => ({
+              ...cat,
+              subcategories: (cat.subcategories || []).map((sub) => ({
+                ...sub,
+                features: (sub.features || []).map((f) => (f.id === editingFeature.id ? { ...f, possible_values: [...(f.possible_values || []), val] } : f)),
+              })),
+            }))
+          );
+        } catch (err) {
+          console.error('Failed to create possible value', err);
+          window.alert('Failed to save possible value');
+        } finally {
+          setNewValue('');
+        }
+      })();
+    } else {
+      // Not yet created feature — just add locally
       setFeatureFormData({
         ...featureFormData,
-        possible_values: [...featureFormData.possible_values, newValue.trim()],
+        possible_values: [...featureFormData.possible_values, trimmed],
       });
       setNewValue('');
     }
@@ -356,7 +439,21 @@ export default function CategoriesPage() {
       if (editingFeature) {
         await featuresApi.update(editingFeature.id, featureFormData);
       } else {
-        await featuresApi.create(featureFormData);
+        const newFeature = await featuresApi.create({
+          subcategory: featureFormData.subcategory,
+          name: featureFormData.name,
+          description: featureFormData.description,
+        });
+        // If we added possible values locally before creating the feature, persist them now
+        if (featureFormData.possible_values && featureFormData.possible_values.length > 0) {
+          try {
+            await Promise.all(
+              featureFormData.possible_values.map((v) => featuresApi.createPossibleValue({ feature: newFeature.id, value: v }))
+            );
+          } catch (pvErr) {
+            console.error('Failed to persist possible values for new feature', pvErr);
+          }
+        }
       }
       setIsFeatureModalOpen(false);
       fetchCategories();
@@ -564,11 +661,10 @@ export default function CategoriesPage() {
                                                       return (
                                                         <span
                                                           key={idx}
-                                                          className={`px-2 py-0.5 text-xs rounded border ${
-                                                            isFromProduct
+                                                          className={`px-2 py-0.5 text-xs rounded border ${isFromProduct
                                                               ? 'bg-green-50 text-green-700 border-green-200'
                                                               : 'bg-blue-50 text-blue-700 border-blue-200'
-                                                          }`}
+                                                            }`}
                                                           title={isFromProduct ? 'Used in products' : 'Predefined value'}
                                                         >
                                                           {value}
@@ -700,10 +796,10 @@ export default function CategoriesPage() {
               required
               value={featureFormData.subcategory}
               onChange={(e) => setFeatureFormData({ ...featureFormData, subcategory: parseInt(e.target.value) })}
-              options={categories.flatMap(cat => 
-                (cat.subcategories || []).map(sub => ({ 
-                  value: sub.id, 
-                  label: `${cat.name} > ${sub.name}` 
+              options={categories.flatMap(cat =>
+                (cat.subcategories || []).map(sub => ({
+                  value: sub.id,
+                  label: `${cat.name} > ${sub.name}`
                 }))
               )}
             />
@@ -720,7 +816,7 @@ export default function CategoriesPage() {
               value={featureFormData.description}
               onChange={(e) => setFeatureFormData({ ...featureFormData, description: e.target.value })}
             />
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Possible Values
