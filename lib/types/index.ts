@@ -16,6 +16,7 @@ export interface User {
   address?: string;
   avatar?: string;
   admin_verified: boolean;
+  id_verified?: boolean;
   deleted: boolean;
   level: 'SILVER' | 'GOLD' | 'DIAMOND';
   referral_points: number;

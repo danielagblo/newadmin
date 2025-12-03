@@ -1,5 +1,5 @@
+import { CreateUserForm, PaginatedResponse, UpdateUserForm, User } from '../types';
 import apiClient from './config';
-import { User, CreateUserForm, UpdateUserForm, PaginatedResponse } from '../types';
 
 export const usersApi = {
   list: async (search?: string): Promise<User[]> => {
@@ -284,6 +284,14 @@ export const usersApi = {
     const response = await apiClient.post<User>('/admin/verifyuser/', {
       id,
       admin_verified: adminVerified,
+    });
+    return response.data;
+  },
+  // Verify or unverify national ID card (admin-only)
+  verifyId: async (id: number, idVerified: boolean = true): Promise<User> => {
+    const response = await apiClient.post<User>('/admin/verify-user-id/', {
+      id,
+      id_verified: idVerified,
     });
     return response.data;
   },

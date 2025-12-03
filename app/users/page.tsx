@@ -1,17 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
+import { Modal } from '@/components/ui/Modal';
 import { usersApi } from '@/lib/api/users';
-import { User, USER_LEVELS } from '@/lib/types';
+import { User } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, Search, Eye } from 'lucide-react';
-import Link from 'next/link';
+import { Plus, Search } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -40,16 +38,16 @@ export default function UsersPage() {
         API_BASE: process.env.NEXT_PUBLIC_API_BASE,
         hasAuthToken: typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : 'N/A'
       });
-      
+
       const data = await usersApi.list(searchTerm || undefined);
       console.log('📦 Users fetched from API:', data);
       console.log('📊 Users data type:', typeof data);
       console.log('📊 Is array?', Array.isArray(data));
       console.log('📊 Data length:', Array.isArray(data) ? data.length : 'N/A');
-      
+
       const usersArray = Array.isArray(data) ? data : [];
       console.log(`✅ Setting ${usersArray.length} users to state`);
-      
+
       if (usersArray.length > 0) {
         console.log('👤 Sample user:', usersArray[0]);
         console.log('👤 Sample user keys:', Object.keys(usersArray[0]));
@@ -58,9 +56,9 @@ export default function UsersPage() {
         console.warn('💡 Check browser Network tab to see the actual API response');
         console.warn('💡 Check browser Console for endpoint errors');
       }
-      
+
       setUsers(usersArray);
-      
+
       if (usersArray.length === 0 && !searchTerm) {
         console.warn('⚠️ No users found. Check:');
         console.warn('  1. Browser Network tab - is the API call succeeding?');
@@ -73,10 +71,10 @@ export default function UsersPage() {
       console.error('Error response:', error?.response);
       console.error('Error status:', error?.response?.status);
       console.error('Error data:', error?.response?.data);
-      
+
       let errorMessage = 'Failed to fetch users';
       let errorDetails = '';
-      
+
       if (error?.response?.status === 404) {
         errorMessage = 'Users endpoint not found (404)';
         errorDetails = `The users API endpoint does not exist on your Django backend.\n\n` +
@@ -90,15 +88,15 @@ export default function UsersPage() {
         errorDetails = 'You may not have permission to view users.';
       } else if (error?.response?.data) {
         errorMessage = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorDetails = error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
         errorMessage = 'Error';
         errorDetails = error.message;
       }
-      
+
       setError(`${errorMessage}\n\n${errorDetails}`);
       setUsers([]);
     } finally {
@@ -182,6 +180,15 @@ export default function UsersPage() {
     }
   };
 
+  const handleVerifyId = async (user: User) => {
+    try {
+      await usersApi.verifyId(user.id, !user.id_verified);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error verifying user ID:', error);
+    }
+  };
+
   const columns = [
     {
       key: 'id',
@@ -203,11 +210,10 @@ export default function UsersPage() {
       key: 'level',
       header: 'Level',
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.level === 'DIAMOND' ? 'bg-purple-100 text-purple-800' :
-          user.level === 'GOLD' ? 'bg-yellow-100 text-yellow-800' :
-          'bg-gray-100 text-gray-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${user.level === 'DIAMOND' ? 'bg-purple-100 text-purple-800' :
+            user.level === 'GOLD' ? 'bg-yellow-100 text-yellow-800' :
+              'bg-gray-100 text-gray-800'
+          }`}>
           {user.level}
         </span>
       ),
@@ -216,10 +222,19 @@ export default function UsersPage() {
       key: 'admin_verified',
       header: 'Verified',
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.admin_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${user.admin_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
           {user.admin_verified ? 'Yes' : 'No'}
+        </span>
+      ),
+    },
+    {
+      key: 'id_verified',
+      header: 'ID Verified',
+      render: (user: User) => (
+        <span className={`px-2 py-1 rounded text-xs ${user.id_verified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
+          {user.id_verified ? 'Yes' : 'No'}
         </span>
       ),
     },
@@ -227,9 +242,8 @@ export default function UsersPage() {
       key: 'is_active',
       header: 'Status',
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
           {user.is_active ? 'Active' : 'Inactive'}
         </span>
       ),
@@ -238,9 +252,8 @@ export default function UsersPage() {
       key: 'is_superuser',
       header: 'Superuser',
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.is_superuser ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${user.is_superuser ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+          }`}>
           {user.is_superuser ? 'Yes' : 'No'}
         </span>
       ),
@@ -249,9 +262,8 @@ export default function UsersPage() {
       key: 'is_staff',
       header: 'Staff',
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.is_staff ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${user.is_staff ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+          }`}>
           {user.is_staff ? 'Yes' : 'No'}
         </span>
       ),
@@ -325,6 +337,13 @@ export default function UsersPage() {
                   onClick={() => handleVerify(user)}
                 >
                   {user.admin_verified ? 'Unverify' : 'Verify'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleVerifyId(user)}
+                >
+                  {user.id_verified ? 'Unverify ID' : 'Verify ID'}
                 </Button>
               </>
             )}
