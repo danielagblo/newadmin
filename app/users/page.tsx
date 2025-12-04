@@ -9,6 +9,8 @@ import { usersApi } from '@/lib/api/users';
 import { User } from '@/lib/types';
 import { format } from 'date-fns';
 import { Plus, Search } from 'lucide-react';
+import Image from 'next/image';
+import { getImageUrl } from '@/lib/utils';
 import React, { useCallback, useEffect, useState } from 'react';
 
 export default function UsersPage() {
@@ -189,6 +191,14 @@ export default function UsersPage() {
     }
   };
 
+  const [isIdModalOpen, setIsIdModalOpen] = useState(false);
+  const [selectedIdUser, setSelectedIdUser] = useState<User | null>(null);
+
+  const handleViewId = (user: User) => {
+    setSelectedIdUser(user);
+    setIsIdModalOpen(true);
+  };
+
   const columns = [
     {
       key: 'id',
@@ -341,6 +351,13 @@ export default function UsersPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => handleViewId(user)}
+                >
+                  View ID
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleVerifyId(user)}
                 >
                   {user.id_verified ? 'Unverify ID' : 'Verify ID'}
@@ -421,6 +438,59 @@ export default function UsersPage() {
               <Button type="submit">Save</Button>
             </div>
           </form>
+        </Modal>
+
+        {/* ID Preview Modal */}
+        <Modal
+          isOpen={isIdModalOpen}
+          onClose={() => { setIsIdModalOpen(false); setSelectedIdUser(null); }}
+          title={selectedIdUser ? `ID for ${selectedIdUser.name}` : 'User ID'}
+          size="lg"
+        >
+          {selectedIdUser ? (
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded p-3">
+                <p className="text-sm text-gray-500">National ID Number</p>
+                <p className="text-lg font-medium mt-1">{selectedIdUser.id_number || 'Not provided'}</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">ID Front</p>
+                  {selectedIdUser.id_front_page ? (
+                    <div className="relative w-full h-64 bg-gray-100 rounded overflow-hidden">
+                      <Image
+                        src={getImageUrl(selectedIdUser.id_front_page)}
+                        alt={`${selectedIdUser.name} ID front`}
+                        fill
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-64 bg-gray-50 rounded flex items-center justify-center text-gray-400">No front image</div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">ID Back</p>
+                  {selectedIdUser.id_back_page ? (
+                    <div className="relative w-full h-64 bg-gray-100 rounded overflow-hidden">
+                      <Image
+                        src={getImageUrl(selectedIdUser.id_back_page)}
+                        alt={`${selectedIdUser.name} ID back`}
+                        fill
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-64 bg-gray-50 rounded flex items-center justify-center text-gray-400">No back image</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => { setIsIdModalOpen(false); setSelectedIdUser(null); }}>Close</Button>
+              </div>
+            </div>
+          ) : null}
         </Modal>
       </div>
     </Layout>
