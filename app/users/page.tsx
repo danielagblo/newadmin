@@ -7,10 +7,10 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { usersApi } from '@/lib/api/users';
 import { User } from '@/lib/types';
+import { getImageUrl } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Plus, Search } from 'lucide-react';
 import Image from 'next/image';
-import { getImageUrl } from '@/lib/utils';
 import React, { useCallback, useEffect, useState } from 'react';
 
 export default function UsersPage() {
@@ -221,8 +221,8 @@ export default function UsersPage() {
       header: 'Level',
       render: (user: User) => (
         <span className={`px-2 py-1 rounded text-xs ${user.level === 'DIAMOND' ? 'bg-purple-100 text-purple-800' :
-            user.level === 'GOLD' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-gray-100 text-gray-800'
+          user.level === 'GOLD' ? 'bg-yellow-100 text-yellow-800' :
+            'bg-gray-100 text-gray-800'
           }`}>
           {user.level}
         </span>
