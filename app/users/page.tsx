@@ -449,6 +449,28 @@ export default function UsersPage() {
         >
           {selectedIdUser ? (
             <div className="space-y-4">
+              <div className="flex items-center gap-4 bg-gray-50 rounded p-3">
+                <div className="relative w-16 h-16 rounded-full overflow-hidden bg-gray-200 border">
+                  {selectedIdUser.avatar ? (
+                    <Image
+                      src={getImageUrl(selectedIdUser.avatar)}
+                      alt={`${selectedIdUser.name} avatar`}
+                      fill
+                      style={{ objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">No photo</div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">User</p>
+                  <p className="text-lg font-semibold">{selectedIdUser.name}</p>
+                  <p className="text-sm text-gray-600">{selectedIdUser.email}</p>
+                  {selectedIdUser.phone && (
+                    <p className="text-sm text-gray-600">{selectedIdUser.phone}</p>
+                  )}
+                </div>
+              </div>
               <div className="bg-gray-50 rounded p-3">
                 <p className="text-sm text-gray-500">National ID Number</p>
                 <p className="text-lg font-medium mt-1">{selectedIdUser.id_number || 'Not provided'}</p>
