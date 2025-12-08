@@ -83,6 +83,17 @@ export interface Product {
   updated_at: string; // ReadOnly
 }
 
+// Product Report Types
+export interface ProductReport {
+  id: number;
+  product?: Product | number;
+  user?: User | number;
+  reason: string;
+  message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // Location Types
 export interface Location {
   id: number;
