@@ -32,6 +32,7 @@ const navigation: NavItem[] = [
   { name: 'Users', href: '/users', icon: Users },
   { name: 'Admin Users', href: '/admin-users', icon: Shield },
   { name: 'Products', href: '/products', icon: Package },
+  { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Categories', href: '/categories', icon: FolderTree },
   { name: 'Locations', href: '/locations', icon: MapPin },
   { name: 'Coupons', href: '/coupons', icon: Ticket },

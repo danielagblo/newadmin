@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { categoriesApi, featuresApi, subCategoriesApi } from '@/lib/api/categories';
 import { Category, Feature, SubCategory } from '@/lib/types';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronRight, Edit, Plus, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Edit, Plus, Trash2, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 export default function CategoriesPage() {
@@ -420,6 +420,38 @@ export default function CategoriesPage() {
     });
   };
 
+  const moveValue = async (index: number, direction: 'up' | 'down') => {
+    const arr = [...featureFormData.possible_values];
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= arr.length) return;
+    // swap
+    [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+
+    // update local form state
+    setFeatureFormData((prev) => ({ ...prev, possible_values: arr }));
+
+    // update categories state so list view reflects new order immediately
+    if (editingFeature && editingFeature.id) {
+      setCategories((prevCats) =>
+        prevCats.map((cat) => ({
+          ...cat,
+          subcategories: (cat.subcategories || []).map((sub) => ({
+            ...sub,
+            features: (sub.features || []).map((f) => (f.id === editingFeature.id ? { ...f, possible_values: arr } : f)),
+          })),
+        }))
+      );
+
+      // try to persist the new order — this endpoint may or may not accept possible_values,
+      // gracefully ignore errors if backend doesn't support it.
+      try {
+        await featuresApi.update(editingFeature.id, { possible_values: arr });
+      } catch (err) {
+        console.error('Failed to persist reordered possible values', err);
+      }
+    }
+  };
+
   const handleDeleteFeature = async (feature: Feature) => {
     if (!window.confirm(`Are you sure you want to delete "${feature.name}"?`)) {
       return;
@@ -662,8 +694,8 @@ export default function CategoriesPage() {
                                                         <span
                                                           key={idx}
                                                           className={`px-2 py-0.5 text-xs rounded border ${isFromProduct
-                                                              ? 'bg-green-50 text-green-700 border-green-200'
-                                                              : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                            ? 'bg-green-50 text-green-700 border-green-200'
+                                                            : 'bg-blue-50 text-blue-700 border-blue-200'
                                                             }`}
                                                           title={isFromProduct ? 'Used in products' : 'Predefined value'}
                                                         >
@@ -847,13 +879,30 @@ export default function CategoriesPage() {
                   {featureFormData.possible_values.map((value, idx) => (
                     <span
                       key={idx}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200"
+                      className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200"
                     >
-                      {value}
+                      <span className="mr-1">{value}</span>
+                      <button
+                        type="button"
+                        onClick={() => moveValue(idx, 'up')}
+                        className="p-1 text-blue-600 hover:text-blue-800"
+                        title="Move up"
+                      >
+                        <ChevronUp className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveValue(idx, 'down')}
+                        className="p-1 text-blue-600 hover:text-blue-800"
+                        title="Move down"
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleRemoveValue(value)}
-                        className="text-blue-600 hover:text-blue-800"
+                        className="text-blue-600 hover:text-blue-800 ml-1"
+                        title="Remove value"
                       >
                         <X className="h-3 w-3" />
                       </button>
