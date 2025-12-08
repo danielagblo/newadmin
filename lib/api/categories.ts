@@ -323,5 +323,13 @@ export const featuresApi = {
     const response = await apiClient.post('/possible-feature-values/', data);
     return response.data;
   },
+  updatePossibleValue: async (id: number, data: Partial<{ value: string; feature?: number; order?: number }>): Promise<any> => {
+    const response = await apiClient.put(`/possible-feature-values/${id}/`, data);
+    return response.data;
+  },
+
+  deletePossibleValue: async (id: number): Promise<void> => {
+    await apiClient.delete(`/possible-feature-values/${id}/`);
+  },
 };
 

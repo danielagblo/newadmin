@@ -42,6 +42,8 @@ export default function CategoriesPage() {
     possible_values: [] as string[],
   });
   const [newValue, setNewValue] = useState('');
+  // Map of possible value string -> id on server (if available)
+  const [possibleValueIds, setPossibleValueIds] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchCategories();
@@ -350,9 +352,21 @@ export default function CategoriesPage() {
     (async () => {
       try {
         const pv = await featuresApi.listPossibleValues(feature.id);
-        // pv items may be objects { id, feature, value } — map to strings
-        const values = pv.map((p: any) => (typeof p === 'string' ? p : p.value || '')).filter(Boolean);
+        // pv items may be objects { id, feature, value } — map to strings and keep ids
+        const values: string[] = [];
+        const idMap: Record<string, number> = {};
+        pv.forEach((p: any) => {
+          if (!p) return;
+          if (typeof p === 'string') {
+            values.push(p);
+          } else {
+            const val = p.value || p.name || String(p);
+            values.push(val);
+            if (p.id) idMap[val] = p.id;
+          }
+        });
         setFeatureFormData((prev) => ({ ...prev, possible_values: values }));
+        setPossibleValueIds(idMap);
         // also update categories state so the list view shows the fetched values
         setCategories((prevCats) =>
           prevCats.map((cat) => ({
@@ -386,6 +400,10 @@ export default function CategoriesPage() {
           const created = await featuresApi.createPossibleValue({ feature: editingFeature.id, value: trimmed });
           const val = typeof created === 'string' ? created : created.value || trimmed;
           setFeatureFormData((prev) => ({ ...prev, possible_values: [...prev.possible_values, val] }));
+          // update id map if server returned an id
+          if (created && typeof created === 'object' && created.id) {
+            setPossibleValueIds((prev) => ({ ...prev, [val]: created.id }));
+          }
           // update categories state so the new value appears in the feature list immediately
           setCategories((prevCats) =>
             prevCats.map((cat) => ({
@@ -414,10 +432,32 @@ export default function CategoriesPage() {
   };
 
   const handleRemoveValue = (valueToRemove: string) => {
-    setFeatureFormData({
-      ...featureFormData,
-      possible_values: featureFormData.possible_values.filter(v => v !== valueToRemove),
-    });
+    // If this value exists on server, attempt to delete it
+    const id = possibleValueIds[valueToRemove];
+    if (editingFeature && editingFeature.id && id) {
+      (async () => {
+        try {
+          await featuresApi.deletePossibleValue(id);
+        } catch (err) {
+          console.error('Failed to delete possible value on server', err);
+        }
+        // Remove locally
+        setFeatureFormData({
+          ...featureFormData,
+          possible_values: featureFormData.possible_values.filter(v => v !== valueToRemove),
+        });
+        setPossibleValueIds((prev) => {
+          const copy = { ...prev };
+          delete copy[valueToRemove];
+          return copy;
+        });
+      })();
+    } else {
+      setFeatureFormData({
+        ...featureFormData,
+        possible_values: featureFormData.possible_values.filter(v => v !== valueToRemove),
+      });
+    }
   };
   // Drag & drop reordering for possible values (HTML5 DnD)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -458,12 +498,9 @@ export default function CategoriesPage() {
         }))
       );
 
-      // try to persist the new order — backend may or may not accept this; ignore errors gracefully
-      try {
-        await featuresApi.update(editingFeature.id, { possible_values: arr });
-      } catch (err) {
-        console.error('Failed to persist reordered possible values', err);
-      }
+      // NOTE: Do NOT send `possible_values` in the feature PUT payload — backend expects
+      // only { name, description, subcategory } and returns 400 for unknown fields.
+      // If your API exposes a dedicated reorder endpoint for possible values, we can call it here.
     }
   };
 
@@ -486,7 +523,13 @@ export default function CategoriesPage() {
     e.preventDefault();
     try {
       if (editingFeature) {
-        await featuresApi.update(editingFeature.id, featureFormData);
+        // Backend expects only name, description and subcategory in the PUT payload.
+        await featuresApi.update(editingFeature.id, {
+          name: featureFormData.name,
+          description: featureFormData.description,
+          subcategory: featureFormData.subcategory,
+        });
+        // Persist any newly added possible values separately via createPossibleValue (handleAddValue already does this).
       } else {
         const newFeature = await featuresApi.create({
           subcategory: featureFormData.subcategory,
