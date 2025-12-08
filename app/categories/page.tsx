@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { categoriesApi, featuresApi, subCategoriesApi } from '@/lib/api/categories';
 import { Category, Feature, SubCategory } from '@/lib/types';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronRight, ChevronUp, Edit, Plus, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit, Plus, Trash2, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 export default function CategoriesPage() {
@@ -419,16 +419,32 @@ export default function CategoriesPage() {
       possible_values: featureFormData.possible_values.filter(v => v !== valueToRemove),
     });
   };
+  // Drag & drop reordering for possible values (HTML5 DnD)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  const moveValue = async (index: number, direction: 'up' | 'down') => {
+  const onDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedIndex(index);
+  };
+
+  const onDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const onDrop = async (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) {
+      setDraggedIndex(null);
+      return;
+    }
+
     const arr = [...featureFormData.possible_values];
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= arr.length) return;
-    // swap
-    [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+    const [moved] = arr.splice(draggedIndex, 1);
+    arr.splice(index, 0, moved);
 
-    // update local form state
     setFeatureFormData((prev) => ({ ...prev, possible_values: arr }));
+    setDraggedIndex(null);
 
     // update categories state so list view reflects new order immediately
     if (editingFeature && editingFeature.id) {
@@ -442,8 +458,7 @@ export default function CategoriesPage() {
         }))
       );
 
-      // try to persist the new order — this endpoint may or may not accept possible_values,
-      // gracefully ignore errors if backend doesn't support it.
+      // try to persist the new order — backend may or may not accept this; ignore errors gracefully
       try {
         await featuresApi.update(editingFeature.id, { possible_values: arr });
       } catch (err) {
@@ -451,6 +466,8 @@ export default function CategoriesPage() {
       }
     }
   };
+
+  const onDragEnd = () => setDraggedIndex(null);
 
   const handleDeleteFeature = async (feature: Feature) => {
     if (!window.confirm(`Are you sure you want to delete "${feature.name}"?`)) {
@@ -879,25 +896,15 @@ export default function CategoriesPage() {
                   {featureFormData.possible_values.map((value, idx) => (
                     <span
                       key={idx}
-                      className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200"
+                      draggable
+                      onDragStart={(e) => onDragStart(e, idx)}
+                      onDragOver={(e) => onDragOver(e, idx)}
+                      onDrop={(e) => onDrop(e, idx)}
+                      onDragEnd={onDragEnd}
+                      className={`inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-200 cursor-move ${draggedIndex === idx ? 'opacity-60' : ''}`}
+                      title="Drag to reorder"
                     >
-                      <span className="mr-1">{value}</span>
-                      <button
-                        type="button"
-                        onClick={() => moveValue(idx, 'up')}
-                        className="p-1 text-blue-600 hover:text-blue-800"
-                        title="Move up"
-                      >
-                        <ChevronUp className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveValue(idx, 'down')}
-                        className="p-1 text-blue-600 hover:text-blue-800"
-                        title="Move down"
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
+                      <span className="mr-1 select-none">{value}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveValue(value)}
