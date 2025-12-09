@@ -33,6 +33,9 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
+  const [pendingSuspendProduct, setPendingSuspendProduct] = useState<Product | null>(null);
+  const [suspensionNote, setSuspensionNote] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [takenFilter, setTakenFilter] = useState<boolean | null>(null);
   const [formData, setFormData] = useState<{
@@ -225,9 +228,9 @@ export default function ProductsPage() {
     }
   };
 
-  const handleSetStatus = async (product: Product, status: string) => {
+  const handleSetStatus = async (product: Product, status: string, note?: string) => {
     try {
-      const updatedProduct = await productsApi.setStatus(product.id, status);
+      const updatedProduct = await productsApi.setStatus(product.id, status, note);
       await fetchProducts();
       setOpenDropdown(null);
     } catch (error: any) {
@@ -281,9 +284,9 @@ export default function ProductsPage() {
         header: 'Status',
         render: (product: Product) => (
           <span className={`px-2 py-1 rounded text-xs ${product.status === 'ACTIVE' || product.status === 'VERIFIED' ? 'bg-green-100 text-green-800' :
-              product.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                product.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                  'bg-gray-100 text-gray-800'
+            product.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+              product.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                'bg-gray-100 text-gray-800'
             }`}>
             {product.status}
           </span>
@@ -345,6 +348,15 @@ export default function ProductsPage() {
         render: (product: Product) => (
           <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
             {product.type}
+          </span>
+        ),
+      },
+      {
+        key: 'suspension_note',
+        header: 'Suspension Note',
+        render: (product: Product) => (
+          <span className={`text-xs ${product.suspension_note ? 'text-gray-900' : 'text-gray-400'}`}>
+            {product.suspension_note ? product.suspension_note : '-'}
           </span>
         ),
       },
@@ -414,8 +426,8 @@ export default function ProductsPage() {
                   setCurrentPage(1);
                 }}
                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${statusFilter === null && takenFilter === null
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
               >
                 All
@@ -429,8 +441,8 @@ export default function ProductsPage() {
                     setCurrentPage(1);
                   }}
                   className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${statusFilter === status && takenFilter === null
-                      ? 'border-primary-500 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
                 >
                   {status}
@@ -443,8 +455,8 @@ export default function ProductsPage() {
                   setCurrentPage(1);
                 }}
                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${takenFilter === true
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
               >
                 Taken
@@ -516,7 +528,16 @@ export default function ProductsPage() {
                           <Select
                             value={product.status}
                             onChange={(e) => {
-                              handleSetStatus(product, e.target.value);
+                              const newStatus = e.target.value;
+                              if (newStatus === 'SUSPENDED') {
+                                // require a note before suspending
+                                setPendingSuspendProduct(product);
+                                setSuspensionNote('');
+                                setIsSuspendModalOpen(true);
+                                setOpenDropdown(null);
+                                return;
+                              }
+                              handleSetStatus(product, newStatus);
                               setOpenDropdown(null);
                             }}
                             options={PRODUCT_STATUSES.map(status => ({
@@ -671,6 +692,55 @@ export default function ProductsPage() {
               <Button type="submit">
                 {editingProduct ? 'Update' : 'Create'}
               </Button>
+            </div>
+          </form>
+        </Modal>
+
+        {/* Suspend Product Modal (requires note) */}
+        <Modal
+          isOpen={isSuspendModalOpen}
+          onClose={() => {
+            setIsSuspendModalOpen(false);
+            setPendingSuspendProduct(null);
+            setSuspensionNote('');
+          }}
+          title="Suspend Product"
+        >
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!pendingSuspendProduct) return;
+              if (!suspensionNote.trim()) {
+                window.alert('Please provide a suspension note');
+                return;
+              }
+              await handleSetStatus(pendingSuspendProduct, 'SUSPENDED', suspensionNote.trim());
+              setIsSuspendModalOpen(false);
+              setPendingSuspendProduct(null);
+              setSuspensionNote('');
+            }}
+            className="space-y-4"
+          >
+            <Textarea
+              label="Suspension Note *"
+              value={suspensionNote}
+              onChange={(e) => setSuspensionNote(e.target.value)}
+              required
+              rows={4}
+            />
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsSuspendModalOpen(false);
+                  setPendingSuspendProduct(null);
+                  setSuspensionNote('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Suspend</Button>
             </div>
           </form>
         </Modal>

@@ -1,5 +1,5 @@
+import { PaginatedResponse, Product } from '../types';
 import apiClient from './config';
-import { Product, PaginatedResponse } from '../types';
 
 type CreateProductForm = Record<string, any>;
 
@@ -79,11 +79,10 @@ export const productsApi = {
     await apiClient.delete(`/products/${id}/`);
   },
 
-  setStatus: async (id: number, status: string): Promise<Product> => {
-    const response = await apiClient.put<Product>(`/products/${id}/set-status/`, {
-      id,
-      status,
-    });
+  setStatus: async (id: number, status: string, suspension_note?: string): Promise<Product> => {
+    const payload: any = { id, status };
+    if (suspension_note !== undefined) payload.suspension_note = suspension_note;
+    const response = await apiClient.put<Product>(`/products/${id}/set-status/`, payload);
     return response.data;
   },
 

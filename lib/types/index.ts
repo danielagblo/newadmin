@@ -79,6 +79,7 @@ export interface Product {
   owner?: ProductOwner; // ReadOnly - ProductOwner object, not User
   images?: ProductImage[]; // ReadOnly
   product_features?: ProductFeature[]; // ReadOnly
+  suspension_note?: string | null;
   created_at: string; // ReadOnly
   updated_at: string; // ReadOnly
 }
