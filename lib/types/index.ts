@@ -291,6 +291,20 @@ export interface AccountDeleteRequest {
   processed_at?: string | null;
 }
 
+// Job Application Types
+export interface JobApplication {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  gender?: string;
+  dob?: string; // ISO date
+  resume?: string; // URL or path to resume file (pdf/docx)
+  cover_letter?: string;
+  created_at?: string;
+}
+
 // FCM Device Types
 export interface FCMDevice {
   id: number;
