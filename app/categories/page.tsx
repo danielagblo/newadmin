@@ -498,6 +498,24 @@ export default function CategoriesPage() {
         }))
       );
 
+      // Persist new order to backend for any possible values that have an ID
+      (async () => {
+        try {
+          await Promise.all(
+            arr.map((val, idx) => {
+              const id = possibleValueIds[val];
+              if (id) {
+                // backend supports updating a possible value's `order` field
+                return featuresApi.updatePossibleValue(id, { order: idx });
+              }
+              return Promise.resolve(null);
+            })
+          );
+        } catch (err) {
+          console.error('Failed to persist possible value order', err);
+        }
+      })();
+
       // NOTE: Do NOT send `possible_values` in the feature PUT payload — backend expects
       // only { name, description, subcategory } and returns 400 for unknown fields.
       // If your API exposes a dedicated reorder endpoint for possible values, we can call it here.
