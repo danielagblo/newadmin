@@ -33,6 +33,7 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
   const [pendingSuspendProduct, setPendingSuspendProduct] = useState<Product | null>(null);
   const [suspensionNote, setSuspensionNote] = useState('');
@@ -197,6 +198,21 @@ export default function ProductsPage() {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} selected product(s)?`)) {
+      return;
+    }
+    try {
+      await Promise.all(Array.from(selectedIds).map(id => productsApi.delete(id)));
+      setSelectedIds(new Set());
+      fetchProducts();
+    } catch (err) {
+      console.error('Error deleting selected products:', err);
+      window.alert('Failed to delete selected products');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -252,6 +268,37 @@ export default function ProductsPage() {
 
   const columns = useMemo(() => {
     return [
+      {
+        key: 'select',
+        header: (
+          <input
+            type="checkbox"
+            aria-label="Select all"
+            checked={products.length > 0 && products.every(p => selectedIds.has(p.id))}
+            onChange={() => {
+              if (products.length > 0 && products.every(p => selectedIds.has(p.id))) {
+                setSelectedIds(new Set());
+              } else {
+                setSelectedIds(new Set(products.map(p => p.id)));
+              }
+            }}
+          />
+        ),
+        render: (product: Product) => (
+          <input
+            type="checkbox"
+            checked={selectedIds.has(product.id)}
+            onChange={() => {
+              setSelectedIds(prev => {
+                const copy = new Set(prev);
+                if (copy.has(product.id)) copy.delete(product.id);
+                else copy.add(product.id);
+                return copy;
+              });
+            }}
+          />
+        ),
+      },
       {
         key: 'id',
         header: 'ID',
@@ -366,17 +413,27 @@ export default function ProductsPage() {
         render: (product: Product) => format(new Date(product.created_at), 'MMM dd, yyyy'),
       },
     ];
-  }, [users]);
+  }, [users, selectedIds, products]);
 
   return (
     <Layout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-          <Button onClick={handleCreate}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Product
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="danger"
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Selected
+            </Button>
+            <Button onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Product
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -481,7 +538,7 @@ export default function ProductsPage() {
 
           <DataTable
             data={products}
-            columns={columns}
+            columns={columns as any}
             isLoading={loading}
             actions={(product: Product) => (
               <div className="relative">
