@@ -498,19 +498,37 @@ export default function CategoriesPage() {
         }))
       );
 
-      // Persist new order to backend for any possible values that have an ID
+      // Persist new order to backend. Re-fetch authoritative possible values
+      // to ensure we have the real IDs (and handle duplicates reliably).
       (async () => {
         try {
+          const pv = await featuresApi.listPossibleValues(editingFeature.id);
+          // Build map: value -> queue of ids
+          const idQueues: Record<string, number[]> = {};
+          pv.forEach((p: any) => {
+            const val = typeof p === 'string' ? p : p.value || p.name || String(p);
+            const id = typeof p === 'object' && p.id ? p.id : undefined;
+            if (!id) return;
+            if (!idQueues[val]) idQueues[val] = [];
+            idQueues[val].push(id);
+          });
+
           await Promise.all(
             arr.map((val, idx) => {
-              const id = possibleValueIds[val];
-              if (id) {
-                // backend supports updating a possible value's `order` field
-                return featuresApi.updatePossibleValue(id, { order: idx });
-              }
+              const q = idQueues[val];
+              const id = q && q.length > 0 ? q.shift() : undefined;
+              if (id) return featuresApi.updatePossibleValue(id, { order: idx });
               return Promise.resolve(null);
             })
           );
+
+          // Update local id map to match backend
+          const newIdMap: Record<string, number> = {};
+          pv.forEach((p: any) => {
+            const val = typeof p === 'string' ? p : p.value || p.name || String(p);
+            if (p && typeof p === 'object' && p.id) newIdMap[val] = p.id;
+          });
+          setPossibleValueIds(newIdMap);
         } catch (err) {
           console.error('Failed to persist possible value order', err);
         }
