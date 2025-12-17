@@ -1,46 +1,82 @@
-'use client';
+"use client";
 
-import { Layout } from '@/components/layout/Layout';
-import { Button } from '@/components/ui/Button';
-import { DataTable } from '@/components/ui/DataTable';
-import { Input } from '@/components/ui/Input';
-import { Modal } from '@/components/ui/Modal';
-import { chatRoomsApi } from '@/lib/api/chats';
-import { usersApi } from '@/lib/api/users';
-import { ChatRoom, Message, User } from '@/lib/types';
-import { format } from 'date-fns';
-import { MessageSquare, Plus, RefreshCw, Search } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { Layout } from "@/components/layout/Layout";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { chatRoomsApi } from "@/lib/api/chats";
+import { usersApi } from "@/lib/api/users";
+import { ChatRoom, Message, User } from "@/lib/types";
+import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
+import {
+  Search,
+  Plus,
+  ChevronLeft,
+  MessageSquare,
+  Users,
+  Mic,
+  Image as ImageIcon,
+  Send,
+  X,
+  Check,
+  RefreshCw,
+  User as UserIcon,
+  Lock,
+  Unlock,
+} from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
 
 export default function ChatRoomsPage() {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
-  const [editingRoom, setEditingRoom] = useState<ChatRoom | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState({
-    name: '',
-    is_group: false,
-    members: [] as number[],
-  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [newMessage, setNewMessage] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [filterOption, setFilterOption] = useState("All");
+  const [openFilter, setOpenFilter] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     fetchChatRooms();
     fetchUsers();
-  }, [searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // Removed searchTerm dependency
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    // Initialize unread counts from chat rooms
+    const initialUnreadCounts: Record<number, number> = {};
+    chatRooms.forEach((room) => {
+      initialUnreadCounts[room.id] = room.total_unread || 0;
+    });
+    setUnreadCounts(initialUnreadCounts);
+  }, [chatRooms]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const fetchUsers = async () => {
     try {
       const data = await usersApi.list();
       setUsers(data);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error("Error fetching users:", error);
     }
   };
 
@@ -49,18 +85,17 @@ export default function ChatRoomsPage() {
     setError(null);
     try {
       const params: any = {
-        ordering: '-created_at', // Order by newest first
+        ordering: "-updated_at",
       };
-
-      if (searchTerm) {
-        params.search = searchTerm;
-      }
 
       const data = await chatRoomsApi.list(params);
       setChatRooms(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      console.error('Error fetching chat rooms:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to fetch chat rooms';
+      console.error("Error fetching chat rooms:", error);
+      const errorMessage =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "Failed to fetch chat rooms";
       setError(errorMessage);
       setChatRooms([]);
     } finally {
@@ -69,776 +104,1086 @@ export default function ChatRoomsPage() {
   };
 
   const fetchMessages = async (roomId: number) => {
+    if (!roomId) return;
+
     setLoadingMessages(true);
     try {
       const data = await chatRoomsApi.getMessages(roomId);
       setMessages(data);
+
+      // Mark messages as read when opening the room
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [roomId]: 0,
+      }));
     } catch (error: any) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
       setMessages([]);
     } finally {
       setLoadingMessages(false);
     }
   };
 
-  const handleCreate = () => {
-    setEditingRoom(null);
-    setFormData({
-      name: '',
-      is_group: false,
-      members: [],
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleEdit = (room: ChatRoom) => {
-    setEditingRoom(room);
-    setFormData({
-      name: room.name,
-      is_group: room.is_group,
-      members: room.members?.map(m => typeof m === 'object' ? m.id : m) || [],
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = async (room: ChatRoom) => {
-    if (!window.confirm(`Are you sure you want to delete chat room "${room.name}"?`)) {
-      return;
-    }
-    try {
-      await chatRoomsApi.delete(room.id);
-      fetchChatRooms();
-    } catch (error: any) {
-      console.error('Error deleting chat room:', error);
-      window.alert(error.response?.data?.detail || 'Failed to delete chat room');
-    }
-  };
-
-  const handleViewMessages = async (room: ChatRoom) => {
+  const handleSelectRoom = async (room: ChatRoom) => {
     setSelectedRoom(room);
-    setIsMessagesModalOpen(true);
     await fetchMessages(room.id);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedRoom || selectedRoom.status === "closed")
+      return;
+
     try {
-      if (editingRoom) {
-        await chatRoomsApi.update(editingRoom.id, formData);
-      } else {
-        // Generate a room UUID client-side and send only the allowed fields.
-        // The backend does not accept `members` in the create payload, so
-        // exclude it here and rely on separate membership endpoints if needed.
-        const roomId = (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function')
-          ? (crypto as any).randomUUID()
-          : undefined;
-        const roomPayload: any = {
-          name: formData.name,
-          is_group: formData.is_group,
-        };
-        if (roomId) roomPayload.room_id = roomId;
-        await chatRoomsApi.create(roomPayload);
-      }
-      setIsModalOpen(false);
-      fetchChatRooms();
-    } catch (error: any) {
-      console.error('Error saving chat room:', error);
-      window.alert(error.response?.data?.detail || 'Failed to save chat room');
+      const message = {
+        content: newMessage.trim(),
+        chat_room: selectedRoom.id,
+      };
+
+      // Send message API call would go here
+      console.log("Sending message:", message);
+
+      // For now, simulate adding message
+      const tempMessage: Message = {
+        id: Date.now(),
+        content: newMessage.trim(),
+        sender: {
+          id: 1,
+          name: "Current User",
+          email: "user@example.com",
+          profile_picture: null,
+        },
+        chat_room: selectedRoom.id,
+        is_read: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, tempMessage]);
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
     }
   };
 
-  const columns = [
-    { key: 'id', header: 'ID' },
-    { key: 'name', header: 'Name' },
-    { key: 'room_id', header: 'Room ID' },
-    {
-      key: 'is_group',
-      header: 'Type',
-      render: (room: ChatRoom) => (
-        <span className={`px-2 py-1 rounded text-xs ${room.is_group ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-          }`}>
-          {room.is_group ? 'Group' : 'Direct'}
-        </span>
-      ),
-    },
-    {
-      key: 'members',
-      header: 'Members',
-      render: (room: ChatRoom) => {
-        if (!room.members || room.members.length === 0) {
-          return <span className="text-gray-500 text-sm">No members</span>;
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedRoom || selectedRoom.status === "closed") return;
+
+    try {
+      // Create a preview URL for the image
+      const previewUrl = URL.createObjectURL(file);
+
+      // Create image message
+      const imageMessage: Message = {
+        id: Date.now(),
+        content: "",
+        sender: {
+          id: 1,
+          name: "Current User",
+          email: "user@example.com",
+          profile_picture: null,
+        },
+        chat_room: selectedRoom.id,
+        is_read: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        attachments: [
+          {
+            id: Date.now(),
+            file_type: "image",
+            file_url: previewUrl,
+            file_name: file.name,
+            file_size: file.size,
+          },
+        ],
+      };
+
+      setMessages((prev) => [...prev, imageMessage]);
+      e.target.value = "";
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Failed to upload image");
+    }
+  };
+
+  const handleStartRecording = async () => {
+    if (!selectedRoom || selectedRoom.status === "closed") return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordedChunksRef.current = [];
+
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
         }
-        const memberList = room.members.slice(0, 3).map((m: User | number) => {
-          if (typeof m === 'object') {
-            return m.name || m.email || 'Unknown';
-          }
-          const user = users.find(u => u.id === m);
-          return user?.name || user?.email || `User ${m}`;
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(recordedChunksRef.current, {
+          type: "audio/webm",
         });
-        const remaining = room.members.length - 3;
-        return (
-          <div className="text-sm">
-            <div>{memberList.join(', ')}</div>
-            {remaining > 0 && (
-              <div className="text-gray-500 text-xs">+{remaining} more</div>
-            )}
-          </div>
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        // Create audio message
+        const audioMessage: Message = {
+          id: Date.now(),
+          content: "",
+          sender: {
+            id: 1,
+            name: "Current User",
+            email: "user@example.com",
+            profile_picture: null,
+          },
+          chat_room: selectedRoom.id,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          attachments: [
+            {
+              id: Date.now(),
+              file_type: "audio",
+              file_url: audioUrl,
+              file_name: "voice-message.webm",
+              file_size: audioBlob.size,
+            },
+          ],
+        };
+
+        setMessages((prev) => [...prev, audioMessage]);
+
+        // Stop all tracks
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("Could not access microphone. Please check permissions.");
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const handleCloseCase = async () => {
+    if (!selectedRoom) return;
+
+    if (
+      window.confirm(
+        `Are you sure you want to close "${selectedRoom.name}"? This will archive the conversation.`
+      )
+    ) {
+      try {
+        // Update room status to closed
+        await chatRoomsApi.update(selectedRoom.id, { status: "closed" });
+
+        // Update selected room
+        setSelectedRoom((prev) =>
+          prev ? { ...prev, status: "closed" } : null
         );
-      },
-    },
-    {
-      key: 'total_unread',
-      header: 'Unread',
-      render: (room: ChatRoom) => (
-        <span className={`px-2 py-1 rounded text-xs ${(room.total_unread || 0) > 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-          }`}>
-          {room.total_unread || 0}
-        </span>
-      ),
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (room: ChatRoom) => format(new Date(room.created_at), 'MMM dd, yyyy'),
-    },
-  ];
+
+        // Update chat rooms list
+        setChatRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id ? { ...room, status: "closed" } : room
+          )
+        );
+
+        // Add system message
+        const systemMessage: Message = {
+          id: Date.now(),
+          content: "Case closed by support agent.",
+          sender: {
+            id: 0,
+            name: "System",
+            email: "system@example.com",
+            profile_picture: null,
+          },
+          chat_room: selectedRoom.id,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, systemMessage]);
+      } catch (error) {
+        console.error("Error closing case:", error);
+        alert("Failed to close case. Please try again.");
+      }
+    }
+  };
+
+  const handleReopenCase = async () => {
+    if (!selectedRoom) return;
+
+    if (
+      window.confirm(`Are you sure you want to reopen "${selectedRoom.name}"?`)
+    ) {
+      try {
+        // Update room status to open
+        await chatRoomsApi.update(selectedRoom.id, { status: "open" });
+
+        // Update selected room
+        setSelectedRoom((prev) => (prev ? { ...prev, status: "open" } : null));
+
+        // Update chat rooms list
+        setChatRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id ? { ...room, status: "open" } : room
+          )
+        );
+
+        // Add system message
+        const systemMessage: Message = {
+          id: Date.now(),
+          content: "Case reopened by support agent.",
+          sender: {
+            id: 0,
+            name: "System",
+            email: "system@example.com",
+            profile_picture: null,
+          },
+          chat_room: selectedRoom.id,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, systemMessage]);
+      } catch (error) {
+        console.error("Error reopening case:", error);
+        alert("Failed to reopen case. Please try again.");
+      }
+    }
+  };
+
+  const getDateLabel = (dateString: string) => {
+    if (!dateString) return "Invalid date";
+
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid date";
+      if (isToday(date)) return "Today";
+      if (isYesterday(date)) return "Yesterday";
+      return format(date, "MMM dd, yyyy");
+    } catch {
+      return "Invalid date";
+    }
+  };
+
+  const formatTime = (dateString: string) => {
+    if (!dateString) return "--:--";
+
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "--:--";
+      return format(date, "HH:mm");
+    } catch {
+      return "--:--";
+    }
+  };
+
+  const formatTimeDistance = (dateString: string) => {
+    if (!dateString) return "Just now";
+
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Just now";
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch {
+      return "Just now";
+    }
+  };
+
+  const groupMessagesByDate = (messages: Message[]) => {
+    const groups: { [key: string]: Message[] } = {};
+
+    messages.forEach((message) => {
+      const dateLabel = getDateLabel(message.created_at);
+      if (!groups[dateLabel]) {
+        groups[dateLabel] = [];
+      }
+      groups[dateLabel].push(message);
+    });
+
+    return Object.entries(groups).map(([label, msgs]) => ({
+      label,
+      messages: msgs,
+    }));
+  };
+
+  // Frontend search filter
+  const getFilteredChatRooms = () => {
+    let filtered = [...chatRooms];
+
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(
+        (room) =>
+          room.name.toLowerCase().includes(term) ||
+          room.members?.some((member) => {
+            if (typeof member === "object") {
+              return (
+                member.name?.toLowerCase().includes(term) ||
+                member.email?.toLowerCase().includes(term)
+              );
+            }
+            return false;
+          }) ||
+          room.room_id?.toLowerCase().includes(term)
+      );
+    }
+
+    // Apply status filter
+    if (filterOption === "Open") {
+      filtered = filtered.filter((room) => room.status !== "closed");
+    } else if (filterOption === "Closed") {
+      filtered = filtered.filter((room) => room.status === "closed");
+    } else if (filterOption === "Unread") {
+      filtered = filtered.filter((room) => (unreadCounts[room.id] || 0) > 0);
+    } else if (filterOption === "Recent") {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      filtered = filtered.filter(
+        (room) => new Date(room.updated_at) > oneDayAgo
+      );
+    }
+
+    return filtered;
+  };
+
+  const getUnreadCount = (roomId: number) => {
+    return unreadCounts[roomId] || 0;
+  };
+
+  const getLastMessage = (room: ChatRoom) => {
+    // In a real app, this would come from the API
+    return (
+      room?.messages[room?.messages?.length - 1]?.content || "No messages yet"
+    );
+  };
+
+  const getAvatarForRoom = (room: ChatRoom) => {
+    if (room.is_group) {
+      return { type: "icon" as const, icon: Users };
+    }
+
+    // For direct messages, try to get the other user's profile picture
+    if (room.members && room.members.length > 0) {
+      const otherMember = room.members.find((member: any) =>
+        typeof member === "object" ? member.id !== 1 : member !== 1
+      );
+
+      if (otherMember) {
+        if (typeof otherMember === "object" && otherMember.profile_picture) {
+          return { type: "image" as const, url: otherMember.profile_picture };
+        }
+      }
+    }
+
+    return { type: "icon" as const, icon: UserIcon };
+  };
+
+  const getRoomDisplayName = (room: ChatRoom) => {
+    // if (room.is_group) {
+    //   return room.name;
+    // }
+    // console.log("Current Room: ", room);
+
+    // // For direct messages, show the other user's name
+    // if (room.members && room.members.length > 0) {
+    //   const otherMember = room.members.find((member: any) =>
+    //     typeof member === "object" ? member.id !== 1 : member !== 1
+    //   );
+
+    //   if (otherMember && typeof otherMember === "object") {
+    //     return otherMember.name || otherMember.email || "Unknown User";
+    //   }
+    // }
+
+    return room.name;
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Search is now handled by frontend filtering
+    // No API call needed
+  };
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Chat Rooms</h1>
-          <div className="flex gap-2">
-            <Button onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Chat Room
-            </Button>
-            <Button onClick={fetchChatRooms} variant="outline" disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-red-800">Error Loading Chat Rooms</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
-                <button
+      <div className="flex h-[calc(100vh-80px)] gap-4 p-4">
+        {/* Left Panel - Chat Rooms List */}
+        <div className="w-[35%] bg-white rounded-lg shadow flex flex-col">
+          {/* Header */}
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Chat Rooms
+              </h2>
+              <div className="flex gap-2">
+                <Button
                   onClick={fetchChatRooms}
-                  className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
                 >
-                  Try again
-                </button>
+                  <RefreshCw
+                    className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                  />
+                </Button>
               </div>
             </div>
-          </div>
-        )}
 
-        <div className="bg-white rounded-lg shadow p-6">
-          {!error && (
-            <div className="mb-4 flex items-center gap-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <Input
-                  placeholder="Search chat rooms..."
+            {/* Search Box */}
+            <form onSubmit={handleSearchSubmit} className="relative mb-4">
+              <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden">
+                <button type="submit" aria-label="Search" className="p-2">
+                  <Search className="h-5 w-5 text-gray-400" />
+                </button>
+                <input
+                  type="search"
+                  placeholder="Search cases"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="w-full px-2 py-2 border-0 outline-none focus:ring-0"
                 />
               </div>
-              <div className="text-sm text-gray-600">
-                Total: {chatRooms.length} chat room{chatRooms.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-          )}
-          <DataTable
-            data={chatRooms}
-            columns={columns}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            isLoading={loading}
-            actions={(room: ChatRoom) => (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleViewMessages(room)}
+            </form>
+
+            {/* Filter Dropdown - Fixed with proper z-index */}
+            <div className="relative z-50 mb-4">
+              <div
+                className="flex items-center justify-between bg-gray-100 rounded-xl px-4 py-2 cursor-pointer flex-row-reverse"
+                onClick={() => setOpenFilter(!openFilter)}
               >
-                <MessageSquare className="h-4 w-4 mr-1" />
-                View Messages
-              </Button>
-            )}
-          />
-        </div>
+                <span className="text-sm font-medium w-full text-center">
+                  {filterOption}
+                </span>
+                <button type="button" className="p-1">
+                  <ChevronLeft
+                    className={`h-4 w-4 transition-transform duration-200 ${
+                      openFilter ? "-rotate-90" : ""
+                    }`}
+                  />
+                </button>
+              </div>
 
-        {/* Create/Edit Modal */}
-        <Modal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          title={editingRoom ? 'Edit Chat Room' : 'Create Chat Room'}
-          size="lg"
-        >
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Name"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Chat room name"
-            />
-
-            <div className="space-y-2">
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={formData.is_group}
-                  onChange={(e) => setFormData({ ...formData, is_group: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Group Chat</span>
-              </label>
+              {openFilter && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-50">
+                  {["All", "Open", "Closed", "Unread", "Recent"].map(
+                    (option) => (
+                      <button
+                        key={option}
+                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${
+                          filterOption === option
+                            ? "bg-blue-50 text-blue-600"
+                            : ""
+                        }`}
+                        onClick={() => {
+                          setFilterOption(option);
+                          setOpenFilter(false);
+                        }}
+                      >
+                        {option}
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Members {formData.is_group ? '(Select multiple)' : '(Select 2 for direct chat)'}
-              </label>
-              <div className="space-y-4 max-h-[400px] overflow-y-auto border border-gray-200 rounded-lg p-4">
-                {(() => {
-                  // Group users by verification status and other criteria
-                  const now = new Date();
-                  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-                  // Verified users who have submitted ads
-                  const verifiedWithAds = users.filter(u =>
-                    u.admin_verified &&
-                    new Date(u.created_at) <= thirtyDaysAgo &&
-                    u.is_active &&
-                    ((u.active_ads && u.active_ads > 0) || (u.taken_ads && u.taken_ads > 0))
-                  );
-
-                  // Verified users who haven't submitted any ads
-                  const verifiedNoAds = users.filter(u =>
-                    u.admin_verified &&
-                    new Date(u.created_at) <= thirtyDaysAgo &&
-                    u.is_active &&
-                    (!u.active_ads || u.active_ads === 0) &&
-                    (!u.taken_ads || u.taken_ads === 0)
-                  );
-
-                  const unverifiedUsers = users.filter(u => !u.admin_verified && new Date(u.created_at) <= thirtyDaysAgo && u.is_active);
-                  const newUsers = users.filter(u => new Date(u.created_at) > thirtyDaysAgo && u.is_active);
-
-                  // User Level Groups
-                  const diamondUsers = users.filter(u => u.level === 'DIAMOND' && u.is_active);
-                  const goldUsers = users.filter(u => u.level === 'GOLD' && u.is_active);
-                  const silverUsers = users.filter(u => u.level === 'SILVER' && u.is_active);
-
-                  // Business Users
-                  const businessUsers = users.filter(u => u.business_name && u.business_name.trim() !== '' && u.is_active);
-
-                  // Fully Verified
-                  const fullyVerifiedUsers = users.filter(u => u.phone_verified && u.email_verified && u.is_active);
-
-                  // Staff/Admin Users
-                  const staffUsers = users.filter(u => (u.is_staff || u.is_superuser) && u.is_active);
-
-                  // Top 100 Users with Most Active Ads
-                  const topActiveAdsUsers = users
-                    .filter(u => u.is_active && u.active_ads && u.active_ads > 0)
-                    .sort((a, b) => (b.active_ads || 0) - (a.active_ads || 0))
-                    .slice(0, 100);
-
-                  const toggleGroup = (groupUserIds: number[]) => {
-                    const allSelected = groupUserIds.every(id => formData.members.includes(id));
-                    if (allSelected) {
-                      setFormData({
-                        ...formData,
-                        members: formData.members.filter(id => !groupUserIds.includes(id)),
-                      });
-                    } else {
-                      setFormData({
-                        ...formData,
-                        members: Array.from(new Set([...formData.members, ...groupUserIds])),
-                      });
-                    }
-                  };
-
-                  const toggleUser = (userId: number) => {
-                    if (formData.members.includes(userId)) {
-                      setFormData({
-                        ...formData,
-                        members: formData.members.filter(id => id !== userId),
-                      });
-                    } else {
-                      setFormData({
-                        ...formData,
-                        members: [...formData.members, userId],
-                      });
-                    }
-                  };
+          {/* Chat Rooms List */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : error ? (
+              <div className="p-4 text-center text-red-600">{error}</div>
+            ) : getFilteredChatRooms().length === 0 ? (
+              <div className="p-4 text-center text-gray-500">
+                {searchTerm
+                  ? "No chat rooms found matching your search"
+                  : "No chat rooms found"}
+              </div>
+            ) : (
+              <div className="divide-y">
+                {getFilteredChatRooms().map((room) => {
+                  const isActive = selectedRoom?.id === room.id;
+                  const isClosed = room.status === "closed";
+                  const lastMessage = getLastMessage(room);
+                  const unreadCount = getUnreadCount(room.id);
+                  const avatarInfo = getAvatarForRoom(room);
+                  const displayName = getRoomDisplayName(room);
 
                   return (
-                    <>
-                      {/* Verified Users with Ads */}
-                      {verifiedWithAds.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={verifiedWithAds.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(verifiedWithAds.map(u => u.id))}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    <div
+                      key={room.id}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        isActive ? "bg-blue-50" : ""
+                      } ${isClosed ? "opacity-75" : ""}`}
+                      onClick={() => handleSelectRoom(room)}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Avatar with status */}
+                        <div className="relative flex-shrink-0">
+                          <div
+                            className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                              isClosed ? "bg-gray-100" : "bg-blue-100"
+                            }`}
+                          >
+                            {avatarInfo.type === "image" ? (
+                              <img
+                                src={avatarInfo.url}
+                                alt={displayName}
+                                className="w-full h-full rounded-full object-cover"
                               />
-                              <span className="text-sm font-semibold text-blue-700">
-                                Verified Users with Ads ({verifiedWithAds.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {verifiedWithAds.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Verified Users without Ads */}
-                      {verifiedNoAds.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={verifiedNoAds.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(verifiedNoAds.map(u => u.id))}
-                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            ) : (
+                              <avatarInfo.icon
+                                className={`h-6 w-6 ${
+                                  isClosed ? "text-gray-400" : "text-blue-600"
+                                }`}
                               />
-                              <span className="text-sm font-semibold text-purple-700">
-                                Verified Users (No Ads) ({verifiedNoAds.length})
-                              </span>
-                            </label>
+                            )}
                           </div>
-                          <div className="pl-6 space-y-1">
-                            {verifiedNoAds.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                </span>
-                              </label>
-                            ))}
-                          </div>
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                              {unreadCount}
+                            </span>
+                          )}
                         </div>
-                      )}
 
-                      {/* Unverified Users */}
-                      {unverifiedUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={unverifiedUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(unverifiedUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="text-sm font-semibold text-gray-700">
-                                Unverified Users ({unverifiedUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {unverifiedUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
+                        {/* Room info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-900 truncate">
+                                {displayName}
+                              </h3>
+                              {isClosed && (
+                                <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
+                                  Closed
                                 </span>
-                              </label>
-                            ))}
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                              {formatTimeDistance(room.updated_at)}
+                            </span>
                           </div>
-                        </div>
-                      )}
 
-                      {/* New Users */}
-                      {newUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={newUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(newUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                              />
-                              <span className="text-sm font-semibold text-green-700">
-                                New Users (Last 30 days) ({newUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {newUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                  {user.admin_verified && (
-                                    <span className="ml-2 text-xs text-blue-600">✓ Verified</span>
-                                  )}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Diamond Level Users */}
-                      {diamondUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={diamondUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(diamondUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                              />
-                              <span className="text-sm font-semibold text-purple-700">
-                                💎 Diamond Level Users ({diamondUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {diamondUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Gold Level Users */}
-                      {goldUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={goldUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(goldUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                              />
-                              <span className="text-sm font-semibold text-yellow-700">
-                                🥇 Gold Level Users ({goldUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {goldUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Silver Level Users */}
-                      {silverUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={silverUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(silverUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                              />
-                              <span className="text-sm font-semibold text-gray-700">
-                                🥈 Silver Level Users ({silverUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {silverUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Business Users */}
-                      {businessUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={businessUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(businessUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <span className="text-sm font-semibold text-indigo-700">
-                                🏢 Business Users ({businessUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {businessUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.business_name}) - {user.email}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Fully Verified Users */}
-                      {fullyVerifiedUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={fullyVerifiedUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(fullyVerifiedUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                              />
-                              <span className="text-sm font-semibold text-green-700">
-                                ✓ Fully Verified (Phone + Email) ({fullyVerifiedUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {fullyVerifiedUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Staff/Admin Users */}
-                      {staffUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={staffUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(staffUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                              />
-                              <span className="text-sm font-semibold text-orange-700">
-                                👥 Staff/Admin Users ({staffUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {staffUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email})
-                                  {user.is_superuser && <span className="ml-2 text-xs text-purple-600">Superuser</span>}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Top 100 Users with Most Active Ads */}
-                      {topActiveAdsUsers.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={topActiveAdsUsers.every(u => formData.members.includes(u.id))}
-                                onChange={() => toggleGroup(topActiveAdsUsers.map(u => u.id))}
-                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                              />
-                              <span className="text-sm font-semibold text-emerald-700">
-                                🏆 Top 100 Users with Most Active Ads ({topActiveAdsUsers.length})
-                              </span>
-                            </label>
-                          </div>
-                          <div className="pl-6 space-y-1">
-                            {topActiveAdsUsers.map((user) => (
-                              <label key={user.id} className="flex items-center space-x-2 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.members.includes(user.id)}
-                                  onChange={() => toggleUser(user.id)}
-                                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                />
-                                <span className="text-sm text-gray-700">
-                                  {user.name} ({user.email}) - {user.active_ads || 0} active ads
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {formData.members.length > 0 && (
-                        <div className="pt-2 border-t border-gray-200">
-                          <p className="text-sm font-medium text-gray-700">
-                            {formData.members.length} member(s) selected
+                          <p className="text-sm text-gray-600 truncate mt-1">
+                            {lastMessage}
                           </p>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
 
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">
-                {editingRoom ? 'Update' : 'Create'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-
-        {/* Messages Modal */}
-        <Modal
-          isOpen={isMessagesModalOpen}
-          onClose={() => {
-            setIsMessagesModalOpen(false);
-            setSelectedRoom(null);
-            setMessages([]);
-          }}
-          title={`Messages - ${selectedRoom?.name || 'Chat Room'}`}
-          size="lg"
-        >
-          <div className="space-y-4">
-            {loadingMessages ? (
-              <div className="text-center py-8 text-gray-500">Loading messages...</div>
-            ) : messages.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">No messages in this chat room</div>
-            ) : (
-              <div className="space-y-4 max-h-[500px] overflow-y-auto">
-                {messages.map((message) => (
-                  <div key={message.id} className="border-b border-gray-200 pb-4 last:border-0">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <div className="font-medium text-sm">
-                          {typeof message.sender === 'object'
-                            ? (message.sender.name || message.sender.email || 'Unknown')
-                            : `User ${message.sender}`}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {format(new Date(message.created_at), 'MMM dd, yyyy HH:mm')}
+                          <div className="flex items-center gap-2 mt-2">
+                            {room.is_group && (
+                              <span
+                                className={`px-2 py-1 text-xs rounded-full ${
+                                  room.is_group
+                                    ? "bg-blue-100 text-blue-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {room.members?.length || 0} members
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      {message.is_read ? (
-                        <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                          Read
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                          Unread
-                        </span>
-                      )}
                     </div>
-                    <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                      {message.content}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
-        </Modal>
+
+          {/* Footer with Make Case button */}
+          <div className="p-4 border-t">
+            <Button
+              onClick={() => setIsUsersModalOpen(true)}
+              className="w-full justify-between flex items-center"
+              variant="outline"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              <span className="w-full">Make Case</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Right Panel - Chat Messages */}
+        <div className="w-[65%] bg-white rounded-lg shadow flex flex-col">
+          {!selectedRoom ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+              <MessageSquare className="h-16 w-16 mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium mb-2">Select a chat</h3>
+              <p>Choose a conversation from the list to start messaging</p>
+            </div>
+          ) : (
+            <>
+              {/* Chat Header */}
+              <div className="p-4 border-b flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedRoom(null)}
+                    className="md:hidden mr-2"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          selectedRoom.status === "closed"
+                            ? "bg-gray-100"
+                            : "bg-blue-100"
+                        }`}
+                      >
+                        {selectedRoom.is_group ? (
+                          <Users
+                            className={`h-5 w-5 ${
+                              selectedRoom.status === "closed"
+                                ? "text-gray-400"
+                                : "text-blue-600"
+                            }`}
+                          />
+                        ) : (
+                          <UserIcon
+                            className={`h-5 w-5 ${
+                              selectedRoom.status === "closed"
+                                ? "text-gray-400"
+                                : "text-blue-600"
+                            }`}
+                          />
+                        )}
+                      </div>
+                      {selectedRoom.status !== "closed" && (
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-gray-900">
+                          {getRoomDisplayName(selectedRoom)}
+                        </h3>
+                        {selectedRoom.status === "closed" && (
+                          <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
+                            Closed
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        {selectedRoom.is_group
+                          ? "Group chat"
+                          : "Direct message"}{" "}
+                        • {selectedRoom.members?.length || 0} members
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Close/Reopen Case Button */}
+                  {selectedRoom.status === "closed" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleReopenCase}
+                      className="flex items-center gap-2 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 border-green-200"
+                    >
+                      <Unlock className="h-4 w-4" />
+                      Reopen Case
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCloseCase}
+                      className="flex items-center gap-2 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 border-red-200"
+                    >
+                      <Lock className="h-4 w-4" />
+                      Close Case
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Are you sure you want to permanently delete "${selectedRoom.name}"? This action cannot be undone.`
+                        )
+                      ) {
+                        console.log("Deleting chat room:", selectedRoom.id);
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+
+              {/* Messages Container */}
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {loadingMessages ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                    <MessageSquare className="h-16 w-16 mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium mb-2">
+                      No messages yet
+                    </h3>
+                    <p>Send the first message to start the conversation</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {groupMessagesByDate(messages).map((group) => (
+                      <div key={group.label} className="mb-6">
+                        <div className="flex items-center justify-center my-4">
+                          <div className="px-4 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
+                            {group.label}
+                          </div>
+                        </div>
+
+                        {group.messages.map((message) => {
+                          const isCurrentUser = message.sender?.id === 1;
+                          const isSystemMessage = message.sender?.id === 0;
+                          const senderAvatar = message.sender?.profile_picture;
+                          const senderInitial =
+                            message.sender?.name?.charAt(0)?.toUpperCase() ||
+                            "U";
+
+                          return (
+                            <div
+                              key={message.id}
+                              className={`flex gap-3 mb-4 ${
+                                isCurrentUser ? "justify-end" : ""
+                              } ${isSystemMessage ? "justify-center" : ""}`}
+                            >
+                              {!isCurrentUser && !isSystemMessage && (
+                                <div className="flex-shrink-0">
+                                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                    {senderAvatar ? (
+                                      <img
+                                        src={senderAvatar}
+                                        alt={message.sender?.name || "User"}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <span className="text-xs font-medium">
+                                        {senderInitial}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div
+                                className={`${
+                                  isSystemMessage ? "max-w-full" : "max-w-[70%]"
+                                }`}
+                              >
+                                {/* Sender name for incoming messages */}
+                                {!isCurrentUser && !isSystemMessage && (
+                                  <p className="text-xs font-medium text-gray-700 mb-1">
+                                    {typeof message.sender === "object"
+                                      ? message.sender.name ||
+                                        message.sender.email
+                                      : `User ${message.sender}`}
+                                  </p>
+                                )}
+
+                                {/* Message bubble */}
+                                <div
+                                  className={`px-4 py-2 ${
+                                    isCurrentUser
+                                      ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
+                                      : isSystemMessage
+                                      ? "bg-gray-100 text-gray-700 text-center rounded-lg italic"
+                                      : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
+                                  }`}
+                                >
+                                  {/* Text content */}
+                                  {message.content && (
+                                    <p className="whitespace-pre-wrap">
+                                      {message.content}
+                                    </p>
+                                  )}
+
+                                  {/* Attachments */}
+                                  {message.attachments &&
+                                    message.attachments.map((attachment) => {
+                                      if (attachment.file_type === "image") {
+                                        return (
+                                          <div
+                                            key={attachment.id}
+                                            className="mt-2"
+                                          >
+                                            <img
+                                              src={attachment.file_url}
+                                              alt={
+                                                attachment.file_name || "Image"
+                                              }
+                                              className="max-w-full h-auto rounded-lg"
+                                            />
+                                            {attachment.file_name && (
+                                              <p className="text-xs text-gray-500 mt-1">
+                                                {attachment.file_name}
+                                              </p>
+                                            )}
+                                          </div>
+                                        );
+                                      } else if (
+                                        attachment.file_type === "audio"
+                                      ) {
+                                        return (
+                                          <div
+                                            key={attachment.id}
+                                            className="mt-2"
+                                          >
+                                            <audio
+                                              controls
+                                              src={attachment.file_url}
+                                              className="w-full"
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">
+                                              Voice message
+                                            </p>
+                                          </div>
+                                        );
+                                      }
+                                      return null;
+                                    })}
+
+                                  {!isSystemMessage && (
+                                    <div
+                                      className={`flex items-center justify-end gap-2 mt-1 ${
+                                        isCurrentUser ? "" : ""
+                                      }`}
+                                    >
+                                      <span
+                                        className={`text-xs ${
+                                          isCurrentUser
+                                            ? "text-blue-200"
+                                            : "text-gray-500"
+                                        }`}
+                                      >
+                                        {formatTime(message.created_at)}
+                                      </span>
+                                      {isCurrentUser && message.is_read && (
+                                        <Check className="h-3 w-3 text-blue-200" />
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Avatar for outgoing messages */}
+                              {isCurrentUser && (
+                                <div className="flex-shrink-0">
+                                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                    <span className="text-xs font-medium text-blue-600">
+                                      U
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Message Input */}
+              {selectedRoom.status === "closed" ? (
+                <div className="p-4 border-t bg-gray-50 text-center text-gray-500 text-sm">
+                  <div className="flex items-center justify-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    This case is closed. You cannot send messages.
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleReopenCase}
+                    className="mt-2 text-blue-600 hover:text-blue-800"
+                  >
+                    Reopen case to continue conversation
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-4 border-t">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center border border-gray-300 rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-3 text-gray-500 hover:text-gray-700"
+                      >
+                        <ImageIcon className="h-5 w-5" />
+                      </button>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                      />
+
+                      <input
+                        type="text"
+                        placeholder="Type a message..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                        className="flex-1 px-2 py-3 border-0 outline-none focus:ring-0"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={
+                          isRecording
+                            ? handleStopRecording
+                            : handleStartRecording
+                        }
+                        className={`p-3 ${
+                          isRecording
+                            ? "text-red-600 animate-pulse"
+                            : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        <Mic className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={!newMessage.trim()}
+                      className="h-full px-4"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Users Modal for New Chat */}
+      <Modal
+        isOpen={isUsersModalOpen}
+        onClose={() => setIsUsersModalOpen(false)}
+        title="Create New Case"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search users..."
+              value={userSearchTerm}
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          <div className="border rounded-lg max-h-[400px] overflow-y-auto">
+            {users
+              .filter(
+                (user) =>
+                  user.name
+                    ?.toLowerCase()
+                    .includes(userSearchTerm.toLowerCase()) ||
+                  user.email
+                    ?.toLowerCase()
+                    .includes(userSearchTerm.toLowerCase())
+              )
+              .map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between p-3 hover:bg-gray-50 border-b last:border-b-0"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden">
+                      {user.profile_picture ? (
+                        <img
+                          src={user.profile_picture}
+                          alt={user.name || "User"}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="font-medium text-blue-600">
+                          {user.name?.charAt(0).toUpperCase() || "U"}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{user.name}</p>
+                      <p className="text-sm text-gray-600">{user.email}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {user.admin_verified && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                            Verified
+                          </span>
+                        )}
+                        {user.is_active && (
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      // Handle start chat with user
+                      console.log("Start chat with:", user.id);
+                      setIsUsersModalOpen(false);
+                    }}
+                    size="sm"
+                  >
+                    Open Case
+                  </Button>
+                </div>
+              ))}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsUsersModalOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Layout>
   );
 }
