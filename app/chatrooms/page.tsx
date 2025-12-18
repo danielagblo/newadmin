@@ -52,6 +52,7 @@ type ExtendedMessage = Message & {
   }>;
   chat_room?: number;
   sender?: ExtendedUser;
+  updated_at: string;
 };
 
 export default function ChatRoomsPage() {
@@ -198,7 +199,7 @@ export default function ChatRoomsPage() {
           name: "System",
           email: "system@example.com",
         } as ExtendedUser,
-        chat_room: extendedRoom.id,
+        room: extendedRoom.id,
         is_read: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -239,7 +240,7 @@ export default function ChatRoomsPage() {
           name: "Current User",
           email: "user@example.com",
         } as ExtendedUser,
-        chat_room: selectedRoom.id,
+        room: selectedRoom.id,
         is_read: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -288,7 +289,7 @@ export default function ChatRoomsPage() {
           name: "Current User",
           email: "user@example.com",
         } as ExtendedUser,
-        chat_room: selectedRoom.id,
+        room: selectedRoom.id,
         is_read: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -360,7 +361,7 @@ export default function ChatRoomsPage() {
             name: "Current User",
             email: "user@example.com",
           } as ExtendedUser,
-          chat_room: selectedRoom.id,
+          room: selectedRoom.id,
           is_read: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -442,7 +443,7 @@ export default function ChatRoomsPage() {
             name: "System",
             email: "system@example.com",
           } as ExtendedUser,
-          chat_room: selectedRoom.id,
+          room: selectedRoom.id,
           is_read: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -482,7 +483,7 @@ export default function ChatRoomsPage() {
             name: "System",
             email: "system@example.com",
           } as ExtendedUser,
-          chat_room: selectedRoom.id,
+          room: selectedRoom.id,
           is_read: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),

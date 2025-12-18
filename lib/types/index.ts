@@ -18,7 +18,7 @@ export interface User {
   admin_verified: boolean;
   id_verified?: boolean;
   deleted: boolean;
-  level: 'SILVER' | 'GOLD' | 'DIAMOND';
+  level: "SILVER" | "GOLD" | "DIAMOND";
   referral_points: number;
   referral_code: string;
   is_active: boolean;
@@ -70,8 +70,14 @@ export interface Product {
   image?: string | null;
   category?: number | null;
   location?: ProductLocation; // ReadOnly
-  type: 'SALE' | 'PAYLATER' | 'RENT';
-  status: 'VERIFIED' | 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | 'PENDING' | 'REJECTED';
+  type: "SALE" | "PAYLATER" | "RENT";
+  status:
+    | "VERIFIED"
+    | "ACTIVE"
+    | "SUSPENDED"
+    | "DRAFT"
+    | "PENDING"
+    | "REJECTED";
   is_taken: boolean;
   description: string;
   price: string; // Decimal string
@@ -125,7 +131,7 @@ export interface Feedback {
   subject?: string;
   message: string;
   category?: string;
-  status?: 'PENDING' | 'READ' | 'RESOLVED' | 'ARCHIVED';
+  status?: "PENDING" | "READ" | "RESOLVED" | "ARCHIVED";
   admin_response?: string;
   created_at: string;
   updated_at: string;
@@ -138,7 +144,7 @@ export interface CreateFeedbackForm {
 }
 
 export interface UpdateFeedbackForm {
-  status?: 'PENDING' | 'READ' | 'RESOLVED' | 'ARCHIVED';
+  status?: "PENDING" | "READ" | "RESOLVED" | "ARCHIVED";
   admin_response?: string;
 }
 
@@ -183,7 +189,7 @@ export interface Coupon {
   id: number;
   code: string;
   description?: string;
-  discount_type: 'PERCENT' | 'FIXED';
+  discount_type: "PERCENT" | "FIXED";
   discount_value: string;
   min_purchase?: string;
   max_discount?: string;
@@ -201,7 +207,7 @@ export interface Coupon {
 
 export interface CreateCouponForm {
   code: string;
-  discount_type: 'PERCENT' | 'FIXED';
+  discount_type: "PERCENT" | "FIXED";
   discount_value: string;
   min_purchase?: string;
   max_discount?: string;
@@ -215,7 +221,7 @@ export interface CreateCouponForm {
 export interface Subscription {
   id: number;
   name: string;
-  tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
+  tier: "BASIC" | "BUSINESS" | "PLATINUM";
   price: string; // Decimal string
   original_price?: string | null; // Decimal string, nullable
   discount_percentage?: string | null; // Decimal string, nullable
@@ -233,7 +239,7 @@ export interface Subscription {
 
 export interface CreateSubscriptionForm {
   name: string;
-  tier: 'BASIC' | 'BUSINESS' | 'PLATINUM';
+  tier: "BASIC" | "BUSINESS" | "PLATINUM";
   price: string; // Decimal string
   original_price?: string | null;
   discount_percentage?: string | null; // Decimal string
@@ -245,7 +251,7 @@ export interface CreateSubscriptionForm {
   is_active?: boolean;
 }
 
-export const SUBSCRIPTION_TIERS = ['BASIC', 'BUSINESS', 'PLATINUM'] as const;
+export const SUBSCRIPTION_TIERS = ["BASIC", "BUSINESS", "PLATINUM"] as const;
 
 // Chat Room Types
 export interface ChatRoom {
@@ -285,7 +291,7 @@ export interface Alert {
 export interface AccountDeleteRequest {
   id: number;
   reason: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: "PENDING" | "APPROVED" | "REJECTED";
   admin_comment?: string | null;
   created_at: string;
   processed_at?: string | null;
@@ -342,7 +348,7 @@ export interface Payment {
   currency: string;
   provider?: string;
   reference?: string;
-  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  status: "PENDING" | "SUCCESS" | "FAILED";
   channel?: string;
   raw_response?: any;
   created_at: string;
@@ -410,34 +416,41 @@ export interface CreateSubCategoryForm {
 }
 
 // User Level Constants
-export const USER_LEVELS = ['SILVER', 'GOLD', 'DIAMOND'] as const;
+export const USER_LEVELS = ["SILVER", "GOLD", "DIAMOND"] as const;
 
 // Discount Type Constants
-export const DISCOUNT_TYPES = ['PERCENT', 'FIXED'] as const;
+export const DISCOUNT_TYPES = ["PERCENT", "FIXED"] as const;
 
 // Product Type Constants
-export const PRODUCT_TYPES = ['SALE', 'PAYLATER', 'RENT'] as const;
+export const PRODUCT_TYPES = ["SALE", "PAYLATER", "RENT"] as const;
 
 // Product Status Constants (matching Django API ProductStatusEnum)
-export const PRODUCT_STATUSES = ['VERIFIED', 'ACTIVE', 'SUSPENDED', 'DRAFT', 'PENDING', 'REJECTED'] as const;
+export const PRODUCT_STATUSES = [
+  "VERIFIED",
+  "ACTIVE",
+  "SUSPENDED",
+  "DRAFT",
+  "PENDING",
+  "REJECTED",
+] as const;
 
 // Region Constants
 export const REGIONS = [
-  'Greater Accra',
-  'Ashanti',
-  'Western',
-  'Eastern',
-  'Central',
-  'Volta',
-  'Northern',
-  'Upper East',
-  'Upper West',
-  'Brong Ahafo',
-  'Western North',
-  'Ahafo',
-  'Bono',
-  'Bono East',
-  'Oti',
-  'Savannah',
-  'North East',
+  "Greater Accra",
+  "Ashanti",
+  "Western",
+  "Eastern",
+  "Central",
+  "Volta",
+  "Northern",
+  "Upper East",
+  "Upper West",
+  "Brong Ahafo",
+  "Western North",
+  "Ahafo",
+  "Bono",
+  "Bono East",
+  "Oti",
+  "Savannah",
+  "North East",
 ] as const;
