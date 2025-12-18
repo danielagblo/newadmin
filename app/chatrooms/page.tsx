@@ -7,27 +7,26 @@ import { Modal } from "@/components/ui/Modal";
 import { chatRoomsApi } from "@/lib/api/chats";
 import { usersApi } from "@/lib/api/users";
 import { ChatRoom, Message, User } from "@/lib/types";
-import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import {
-  Search,
-  Plus,
-  ChevronLeft,
-  MessageSquare,
-  Users,
-  Mic,
-  Image as ImageIcon,
-  Send,
-  X,
   Check,
-  RefreshCw,
-  User as UserIcon,
-  Lock,
-  Unlock,
-  Video,
+  ChevronLeft,
   File,
+  Image as ImageIcon,
+  Lock,
+  MessageSquare,
+  Mic,
+  Plus,
+  RefreshCw,
+  Search,
+  Send,
+  Unlock,
+  User as UserIcon,
+  Users,
+  Video
 } from "lucide-react";
-import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
+import React, { useEffect, useRef, useState } from "react";
 
 // Extended types to handle missing properties
 type ExtendedChatRoom = ChatRoom & {
@@ -157,33 +156,42 @@ export default function ChatRoomsPage() {
 
   const handleCreateCase = async (user: ExtendedUser) => {
     try {
-      // Create a new chat room for the selected user
-      const roomId =
-        typeof crypto !== "undefined" &&
-        typeof (crypto as any).randomUUID === "function"
-          ? (crypto as any).randomUUID()
-          : undefined;
+      // Prefer backend chatroomid endpoint which returns/creates a room for the given email
+      let newRoom: any = null;
+      try {
+        newRoom = await chatRoomsApi.getByEmail(user.email || '');
+      } catch (err) {
+        console.warn('chatroomid endpoint failed, falling back to create:', err);
+      }
 
-      const roomPayload: any = {
-        name: `${user.name} - Support Case`,
-        is_group: false,
-        members: [user.id],
-      };
+      if (!newRoom) {
+        // Fallback: create a new chat room for the selected user
+        const roomId =
+          typeof crypto !== "undefined" &&
+            typeof (crypto as any).randomUUID === "function"
+            ? (crypto as any).randomUUID()
+            : undefined;
 
-      if (roomId) roomPayload.room_id = roomId;
+        const roomPayload: any = {
+          name: `${user.name} - Support Case`,
+          is_group: false,
+          members: [user.id],
+        };
 
-      // Create the chat room via API
-      const newRoom = await chatRoomsApi.create(roomPayload);
+        if (roomId) roomPayload.room_id = roomId;
 
-      // Add the new room to the chat rooms list
+        newRoom = await chatRoomsApi.create(roomPayload);
+      }
+
+      // Add the returned room to the chat rooms list
       const extendedRoom: ExtendedChatRoom = {
         ...newRoom,
-        status: "open",
-        last_message: "Case opened by support agent.",
-        updated_at: new Date().toISOString(),
+        status: newRoom.status || "open",
+        last_message: newRoom.last_message || "Case opened by support agent.",
+        updated_at: newRoom.updated_at || new Date().toISOString(),
         messages: [],
         profile_picture: user.profile_picture,
-        members: [user],
+        members: newRoom.members || [user],
       };
 
       // Add to chat rooms list and select it
@@ -253,10 +261,10 @@ export default function ChatRoomsPage() {
         prev.map((room) =>
           room.id === selectedRoom.id
             ? {
-                ...room,
-                last_message: newMessage.trim(),
-                updated_at: new Date().toISOString(),
-              }
+              ...room,
+              last_message: newMessage.trim(),
+              updated_at: new Date().toISOString(),
+            }
             : room
         )
       );
@@ -277,8 +285,8 @@ export default function ChatRoomsPage() {
       const fileType = file.type.startsWith("video/")
         ? "video"
         : file.type.startsWith("audio/")
-        ? "audio"
-        : "image";
+          ? "audio"
+          : "image";
 
       // Create message with attachment
       const messageWithAttachment: ExtendedMessage = {
@@ -311,16 +319,16 @@ export default function ChatRoomsPage() {
         fileType === "image"
           ? "📷 Image"
           : fileType === "video"
-          ? "🎥 Video"
-          : "🎵 Audio";
+            ? "🎥 Video"
+            : "🎵 Audio";
       setChatRooms((prev) =>
         prev.map((room) =>
           room.id === selectedRoom.id
             ? {
-                ...room,
-                last_message: lastMessage,
-                updated_at: new Date().toISOString(),
-              }
+              ...room,
+              last_message: lastMessage,
+              updated_at: new Date().toISOString(),
+            }
             : room
         )
       );
@@ -383,10 +391,10 @@ export default function ChatRoomsPage() {
           prev.map((room) =>
             room.id === selectedRoom.id
               ? {
-                  ...room,
-                  last_message: "🎵 Voice message",
-                  updated_at: new Date().toISOString(),
-                }
+                ...room,
+                last_message: "🎵 Voice message",
+                updated_at: new Date().toISOString(),
+              }
               : room
           )
         );
@@ -707,9 +715,8 @@ export default function ChatRoomsPage() {
                 </span>
                 <button type="button" className="p-1">
                   <ChevronLeft
-                    className={`h-4 w-4 transition-transform duration-200 ${
-                      openFilter ? "-rotate-90" : ""
-                    }`}
+                    className={`h-4 w-4 transition-transform duration-200 ${openFilter ? "-rotate-90" : ""
+                      }`}
                   />
                 </button>
               </div>
@@ -720,11 +727,10 @@ export default function ChatRoomsPage() {
                     (option) => (
                       <button
                         key={option}
-                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${
-                          filterOption === option
+                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${filterOption === option
                             ? "bg-blue-50 text-blue-600"
                             : ""
-                        }`}
+                          }`}
                         onClick={() => {
                           setFilterOption(option);
                           setOpenFilter(false);
@@ -767,18 +773,16 @@ export default function ChatRoomsPage() {
                   return (
                     <div
                       key={room.id}
-                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                        isActive ? "bg-blue-50" : ""
-                      } ${isClosed ? "opacity-75" : ""}`}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${isActive ? "bg-blue-50" : ""
+                        } ${isClosed ? "opacity-75" : ""}`}
                       onClick={() => handleSelectRoom(room)}
                     >
                       <div className="flex items-start gap-3">
                         {/* Avatar with status */}
                         <div className="relative flex-shrink-0">
                           <div
-                            className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                              isClosed ? "bg-gray-100" : "bg-blue-100"
-                            }`}
+                            className={`w-12 h-12 rounded-full flex items-center justify-center ${isClosed ? "bg-gray-100" : "bg-blue-100"
+                              }`}
                           >
                             {avatarInfo.type === "image" ? (
                               <div className="relative w-full h-full">
@@ -792,9 +796,8 @@ export default function ChatRoomsPage() {
                               </div>
                             ) : (
                               <avatarInfo.icon
-                                className={`h-6 w-6 ${
-                                  isClosed ? "text-gray-400" : "text-blue-600"
-                                }`}
+                                className={`h-6 w-6 ${isClosed ? "text-gray-400" : "text-blue-600"
+                                  }`}
                               />
                             )}
                           </div>
@@ -829,11 +832,10 @@ export default function ChatRoomsPage() {
                           <div className="flex items-center gap-2 mt-2">
                             {room.is_group && (
                               <span
-                                className={`px-2 py-1 text-xs rounded-full ${
-                                  room.is_group
+                                className={`px-2 py-1 text-xs rounded-full ${room.is_group
                                     ? "bg-blue-100 text-blue-800"
                                     : "bg-gray-100 text-gray-800"
-                                }`}
+                                  }`}
                               >
                                 {room.members?.length || 0} members
                               </span>
@@ -883,27 +885,24 @@ export default function ChatRoomsPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          selectedRoom.status === "closed"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedRoom.status === "closed"
                             ? "bg-gray-100"
                             : "bg-blue-100"
-                        }`}
+                          }`}
                       >
                         {selectedRoom.is_group ? (
                           <Users
-                            className={`h-5 w-5 ${
-                              selectedRoom.status === "closed"
+                            className={`h-5 w-5 ${selectedRoom.status === "closed"
                                 ? "text-gray-400"
                                 : "text-blue-600"
-                            }`}
+                              }`}
                           />
                         ) : (
                           <UserIcon
-                            className={`h-5 w-5 ${
-                              selectedRoom.status === "closed"
+                            className={`h-5 w-5 ${selectedRoom.status === "closed"
                                 ? "text-gray-400"
                                 : "text-blue-600"
-                            }`}
+                              }`}
                           />
                         )}
                       </div>
@@ -1018,9 +1017,8 @@ export default function ChatRoomsPage() {
                           return (
                             <div
                               key={message.id}
-                              className={`flex gap-3 mb-4 ${
-                                isCurrentUser ? "justify-end" : ""
-                              } ${isSystemMessage ? "justify-center" : ""}`}
+                              className={`flex gap-3 mb-4 ${isCurrentUser ? "justify-end" : ""
+                                } ${isSystemMessage ? "justify-center" : ""}`}
                             >
                               {!isCurrentUser && !isSystemMessage && (
                                 <div className="flex-shrink-0">
@@ -1045,29 +1043,27 @@ export default function ChatRoomsPage() {
                               )}
 
                               <div
-                                className={`${
-                                  isSystemMessage ? "max-w-full" : "max-w-[70%]"
-                                }`}
+                                className={`${isSystemMessage ? "max-w-full" : "max-w-[70%]"
+                                  }`}
                               >
                                 {/* Sender name for incoming messages */}
                                 {!isCurrentUser && !isSystemMessage && (
                                   <p className="text-xs font-medium text-gray-700 mb-1">
                                     {typeof message.sender === "object"
                                       ? message.sender.name ||
-                                        message.sender.email
+                                      message.sender.email
                                       : `User ${message.sender}`}
                                   </p>
                                 )}
 
                                 {/* Message bubble */}
                                 <div
-                                  className={`px-4 py-2 ${
-                                    isCurrentUser
+                                  className={`px-4 py-2 ${isCurrentUser
                                       ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
                                       : isSystemMessage
-                                      ? "bg-gray-100 text-gray-700 text-center rounded-lg italic"
-                                      : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
-                                  }`}
+                                        ? "bg-gray-100 text-gray-700 text-center rounded-lg italic"
+                                        : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
+                                    }`}
                                 >
                                   {/* Text content */}
                                   {message.content && (
@@ -1180,53 +1176,51 @@ export default function ChatRoomsPage() {
 
                                           {attachment.file_type ===
                                             "document" && (
-                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                              <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                                  <FileIcon className="h-5 w-5 text-gray-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                  <p className="text-sm font-medium text-gray-900">
-                                                    {attachment.file_name ||
-                                                      "Document"}
-                                                  </p>
-                                                  {attachment.file_size && (
-                                                    <p className="text-xs text-gray-500">
-                                                      {(
-                                                        attachment.file_size /
-                                                        1024
-                                                      ).toFixed(2)}{" "}
-                                                      KB
+                                              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                                <div className="flex items-center gap-3">
+                                                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                                    <FileIcon className="h-5 w-5 text-gray-600" />
+                                                  </div>
+                                                  <div className="flex-1">
+                                                    <p className="text-sm font-medium text-gray-900">
+                                                      {attachment.file_name ||
+                                                        "Document"}
                                                     </p>
-                                                  )}
+                                                    {attachment.file_size && (
+                                                      <p className="text-xs text-gray-500">
+                                                        {(
+                                                          attachment.file_size /
+                                                          1024
+                                                        ).toFixed(2)}{" "}
+                                                        KB
+                                                      </p>
+                                                    )}
+                                                  </div>
+                                                  <a
+                                                    href={attachment.file_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 hover:text-blue-800"
+                                                  >
+                                                    <File className="h-5 w-5" />
+                                                  </a>
                                                 </div>
-                                                <a
-                                                  href={attachment.file_url}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-blue-600 hover:text-blue-800"
-                                                >
-                                                  <File className="h-5 w-5" />
-                                                </a>
                                               </div>
-                                            </div>
-                                          )}
+                                            )}
                                         </div>
                                       );
                                     })}
 
                                   {!isSystemMessage && (
                                     <div
-                                      className={`flex items-center justify-end gap-2 mt-1 ${
-                                        isCurrentUser ? "" : ""
-                                      }`}
+                                      className={`flex items-center justify-end gap-2 mt-1 ${isCurrentUser ? "" : ""
+                                        }`}
                                     >
                                       <span
-                                        className={`text-xs ${
-                                          isCurrentUser
+                                        className={`text-xs ${isCurrentUser
                                             ? "text-blue-200"
                                             : "text-gray-500"
-                                        }`}
+                                          }`}
                                       >
                                         {formatTime(message.created_at)}
                                       </span>
@@ -1315,11 +1309,10 @@ export default function ChatRoomsPage() {
                             ? handleStopRecording
                             : handleStartRecording
                         }
-                        className={`p-3 ${
-                          isRecording
+                        className={`p-3 ${isRecording
                             ? "text-red-600 animate-pulse"
                             : "text-gray-500 hover:text-gray-700"
-                        }`}
+                          }`}
                       >
                         <Mic className="h-5 w-5" />
                       </button>

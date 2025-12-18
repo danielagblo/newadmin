@@ -36,6 +36,15 @@ export const chatRoomsApi = {
     return response.data;
   },
 
+  /**
+   * Retrieve or create a chatroom by user email using the chatroomid endpoint.
+   * Expected endpoint: GET /chatroomid/?email=someone%40example.com
+   */
+  getByEmail: async (email: string): Promise<ChatRoom> => {
+    const response = await apiClient.get<ChatRoom>(`/chatroomid/`, { params: { email } });
+    return response.data;
+  },
+
   update: async (id: number, data: {
     name?: string;
     is_group?: boolean;
