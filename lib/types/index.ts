@@ -448,7 +448,6 @@ export const REGIONS = [
   "Brong Ahafo",
   "Western North",
   "Ahafo",
-  "Bono",
   "Bono East",
   "Oti",
   "Savannah",
