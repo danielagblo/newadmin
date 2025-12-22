@@ -1,24 +1,26 @@
-import { ChatRoom, Message, PaginatedResponse } from '../types';
-import apiClient from './config';
+import { ChatRoom, Message, PaginatedResponse } from "../types";
+import apiClient from "./config";
 
 export const chatRoomsApi = {
   list: async (params?: {
     ordering?: string;
     search?: string;
   }): Promise<ChatRoom[]> => {
-    const response = await apiClient.get<ChatRoom[] | PaginatedResponse<ChatRoom>>('/chatrooms/', { params });
-    
+    const response = await apiClient.get<
+      ChatRoom[] | PaginatedResponse<ChatRoom>
+    >("/chatrooms/", { params });
+
     // Handle array response
     if (Array.isArray(response.data)) {
       return response.data;
     }
-    
+
     // Handle paginated response
     const paginatedData = response.data as PaginatedResponse<ChatRoom>;
     if (paginatedData.results && Array.isArray(paginatedData.results)) {
       return paginatedData.results;
     }
-    
+
     return [];
   },
 
@@ -29,18 +31,26 @@ export const chatRoomsApi = {
 
   create: async (data: {
     name: string;
+    email: string;
     is_group: boolean;
     room_id: string; // optional client-provided UUID
   }): Promise<ChatRoom> => {
-    const response = await apiClient.post<ChatRoom>('/chatrooms/', data);
-    return response.data;
+    const response = await apiClient.get<ChatRoom>(
+      `/chatroomid/?email=${data?.email}`
+    );
+    const result = response?.data;
+    console.log("Creating Chat room: ", result);
+    return result;
   },
 
-  update: async (id: number, data: {
-    name?: string;
-    is_group?: boolean;
-    members?: number[]; // Array of user IDs
-  }): Promise<ChatRoom> => {
+  update: async (
+    id: number,
+    data: {
+      name?: string;
+      is_group?: boolean;
+      members?: number[]; // Array of user IDs
+    }
+  ): Promise<ChatRoom> => {
     const response = await apiClient.put<ChatRoom>(`/chatrooms/${id}/`, data);
     return response.data;
   },
@@ -50,7 +60,9 @@ export const chatRoomsApi = {
   },
 
   getMessages: async (id: number): Promise<Message[]> => {
-    const response = await apiClient.get<Message[]>(`/chatrooms/${id}/messages/`);
+    const response = await apiClient.get<Message[]>(
+      `/chatrooms/${id}/messages/`
+    );
     return response.data;
   },
 
@@ -62,7 +74,9 @@ export const chatRoomsApi = {
   },
 
   markRead: async (id: number): Promise<{ status: string }> => {
-    const response = await apiClient.post<{ status: string }>(`/chatrooms/${id}/mark-read/`);
+    const response = await apiClient.post<{ status: string }>(
+      `/chatrooms/${id}/mark-read/`
+    );
     return response.data;
   },
 };
@@ -70,7 +84,7 @@ export const chatRoomsApi = {
 export const messagesApi = {
   list: async (room?: number): Promise<Message[]> => {
     const params = room ? { room } : {};
-    const response = await apiClient.get<Message[]>('/messages/', { params });
+    const response = await apiClient.get<Message[]>("/messages/", { params });
 
     const data = response.data as any;
 
@@ -80,12 +94,12 @@ export const messagesApi = {
     }
 
     // If the API returned a paginated object, return its results
-    if (data && typeof data === 'object' && Array.isArray(data.results)) {
+    if (data && typeof data === "object" && Array.isArray(data.results)) {
       return data.results as Message[];
     }
 
     // Unexpected response (HTML debug page, string, etc.) — throw so caller can fallback
-    throw new Error('Unexpected messages list response');
+    throw new Error("Unexpected messages list response");
   },
 
   get: async (id: number): Promise<Message> => {
@@ -97,7 +111,10 @@ export const messagesApi = {
    * Reply to a message by sending to its room. If the original message has no room,
    * create a direct chatroom with the original sender and send the message there.
    */
-  replyToMessage: async (messageId: number, content: string): Promise<Message> => {
+  replyToMessage: async (
+    messageId: number,
+    content: string
+  ): Promise<Message> => {
     // fetch the message to learn its room or sender
     const original = await apiClient.get<Message>(`/messages/${messageId}/`);
     const msg = original.data;
@@ -110,9 +127,14 @@ export const messagesApi = {
 
     // If no room, create a direct chatroom with the sender
     const senderId = (msg.sender as any)?.id;
-    if (!senderId) throw new Error('Original message has no sender id to reply to');
+    if (!senderId)
+      throw new Error("Original message has no sender id to reply to");
 
-    const room = await chatRoomsApi.create({ name: '', is_group: false, room_id: '' });
+    const room = await chatRoomsApi.create({
+      name: "",
+      is_group: false,
+      room_id: "",
+    });
     const sent = await chatRoomsApi.sendMessage(room.id, content);
     return sent;
   },
@@ -126,4 +148,3 @@ export const messagesApi = {
     return resp.data;
   },
 };
-
