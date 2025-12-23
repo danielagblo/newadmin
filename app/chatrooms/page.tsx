@@ -90,7 +90,7 @@ export default function ChatRoomsPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const [replyingTo, setReplyingTo] = useState<ExtendedMessage | null>(null);
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const user = JSON.parse(localStorage.getItem("user"));
 
   // Function to handle reply to a specific message
   const handleReplyToMessage = (message: ExtendedMessage) => {
@@ -1296,7 +1296,7 @@ export default function ChatRoomsPage() {
                                     isStaffOrAdmin
                                       ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
                                       : !isSystemMessage
-                                      ? "bg-gray-100 text-gray-700 text-center rounded-lg "
+                                      ? "bg-gray-100 text-gray-700 text-left rounded-lg "
                                       : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
                                   }`}
                                 >
