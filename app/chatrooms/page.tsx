@@ -37,10 +37,14 @@ import useWsChat from "@/lib/hooks/useWsChat";
 // Extended types to handle missing properties
 type ExtendedChatRoom = ChatRoom & {
   status?: "open" | "closed";
-  last_message?: string;
+  last_message?: any; // Changed from string to any to handle object
   updated_at?: string;
   messages?: ExtendedMessage[];
   profile_picture?: string | null;
+  // Add missing fields from WebSocket
+  other_user?: string; // From WebSocket
+  other_user_avatar?: string | null;
+  unread?: number; // From WebSocket (not total_unread)
 };
 
 type ExtendedUser = User & {
@@ -237,8 +241,18 @@ export default function ChatRoomsPage() {
   // Sync chatRooms from websocket-backed hook
   useEffect(() => {
     try {
-      if (Array.isArray(ws.chatrooms))
+      if (Array.isArray(ws.chatrooms)) {
         setChatRooms(ws.chatrooms as ExtendedChatRoom[]);
+
+        // Update unread counts from each room's unread field
+        const newUnreadCounts: Record<number, number> = {};
+        ws.chatrooms.forEach((room: any) => {
+          if (room.id && room.unread !== undefined) {
+            newUnreadCounts[room.id] = room.unread;
+          }
+        });
+        setUnreadCounts(newUnreadCounts);
+      }
     } catch {}
   }, [ws.chatrooms]);
 
@@ -249,16 +263,30 @@ export default function ChatRoomsPage() {
       const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
       const msgs = (ws.messages as any)[key] || [];
       setMessages(msgs as ExtendedMessage[]);
-      // update unread counts from ws.unreadCount or from room's total_unread
-      setUnreadCounts((prev) => ({
-        ...prev,
-        [selectedRoom.id]: ws.unreadCount || selectedRoom.total_unread || 0,
-      }));
+
+      // Mark room as read when messages are loaded
+      if (msgs.length > 0) {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [selectedRoom.id]: 0,
+        }));
+      }
     } catch {
       // ignore
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoom, ws.messages, ws.unreadCount]);
+  }, [selectedRoom, ws.messages]);
+
+  // Sync global unread count
+  useEffect(() => {
+    // Update from WebSocket unreadCount
+    setUnreadCounts((prev) => {
+      const newCounts = { ...prev };
+      // Update each room's unread count based on ws.unreadCount
+      // You might need a different strategy here depending on your needs
+      return newCounts;
+    });
+  }, [ws.unreadCount]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -268,8 +296,11 @@ export default function ChatRoomsPage() {
     try {
       const data = await usersApi.list();
       setUsers(data as ExtendedUser[]);
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching users:", error);
+      setError("Failed to load users");
+      setLoading(false);
     }
   };
 
@@ -339,7 +370,15 @@ export default function ChatRoomsPage() {
     try {
       const key = String(room.room_id ?? room.id ?? "");
       await ws.connectToRoom(key);
-      // messages will be synced via ws.messages effect above
+
+      // Mark as read when selecting room
+      await ws.markAsRead(key);
+
+      // Clear unread count for this room
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [room.id]: 0,
+      }));
     } catch (e) {
       console.error("Failed to connect to room via websocket", e);
     }
@@ -641,6 +680,7 @@ export default function ChatRoomsPage() {
       filtered = filtered.filter(
         (room) =>
           room.name.toLowerCase().includes(term) ||
+          room.other_user?.toLowerCase().includes(term) || // Search by other_user
           room.members?.some((member) => {
             if (typeof member === "object") {
               return (
@@ -660,7 +700,7 @@ export default function ChatRoomsPage() {
     } else if (filterOption === "Closed") {
       filtered = filtered.filter((room) => room.status === "closed");
     } else if (filterOption === "Unread") {
-      filtered = filtered.filter((room) => (unreadCounts[room.id] || 0) > 0);
+      filtered = filtered.filter((room) => getUnreadCount(room.id) > 0);
     } else if (filterOption === "Recent") {
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       filtered = filtered.filter(
@@ -672,14 +712,19 @@ export default function ChatRoomsPage() {
   };
 
   const getUnreadCount = (roomId: number) => {
+    // Use the unreadCounts state (updated from WebSocket)
     return unreadCounts[roomId] || 0;
   };
 
   const getLastMessage = (room: ExtendedChatRoom) => {
-    if (room.last_message) {
-      return room.last_message;
+    // Check if we have last_message object from WebSocket
+    if (room.last_message && typeof room.last_message === "object") {
+      const lastMsg = room.last_message as any;
+      return lastMsg.text || "No messages yet";
     }
-    return "No messages yet";
+
+    // Fallback to string last_message or default
+    return (room.last_message as string) || "No messages yet";
   };
 
   const getAvatarForRoom = (room: ExtendedChatRoom) => {
@@ -687,7 +732,15 @@ export default function ChatRoomsPage() {
       return { type: "icon" as const, icon: Users };
     }
 
-    // For direct messages, try to get the other user's profile picture
+    // Use the other_user_avatar from WebSocket if available
+    if (room.other_user_avatar) {
+      return {
+        type: "image" as const,
+        url: room.other_user_avatar,
+      };
+    }
+
+    // Fallback to checking members (for backward compatibility)
     if (room.members && room.members.length > 0) {
       const otherMember = room.members.find((member: any) =>
         typeof member === "object" ? member.id !== 1 : member !== 1
@@ -708,6 +761,12 @@ export default function ChatRoomsPage() {
   };
 
   const getRoomDisplayName = (room: ExtendedChatRoom) => {
+    // Use other_user from WebSocket (your data shows "other_user": "Daniel AGBLO")
+    if (room.other_user) {
+      return room.other_user;
+    }
+
+    // Fallback to room name
     return room.name;
   };
 
@@ -717,6 +776,11 @@ export default function ChatRoomsPage() {
 
   // Helper function to get room updated_at or fallback to created_at
   const getRoomUpdatedTime = (room: ExtendedChatRoom) => {
+    // Try last_message timestamp first
+    if (room.last_message && typeof room.last_message === "object") {
+      return (room.last_message as any).created_at || "";
+    }
+
     return room.updated_at || room.created_at || "";
   };
 
@@ -847,7 +911,6 @@ export default function ChatRoomsPage() {
                 {getFilteredChatRooms().map((room) => {
                   const isActive = selectedRoom?.id === room.id;
                   const isClosed = room.status === "closed";
-                  const lastMessage = getLastMessage(room);
                   const unreadCount = getUnreadCount(room.id);
                   const avatarInfo = getAvatarForRoom(room);
                   const displayName = getRoomDisplayName(room);
@@ -889,7 +952,7 @@ export default function ChatRoomsPage() {
                           </div>
                           {unreadCount > 0 && (
                             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                              {unreadCount}
+                              {unreadCount > 9 ? "9+" : unreadCount}
                             </span>
                           )}
                         </div>
@@ -907,23 +970,33 @@ export default function ChatRoomsPage() {
                                 </span>
                               )}
                             </div>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                              {formatTimeDistance(updatedTime)}
+                            </span>
                           </div>
 
                           <p className="text-sm text-gray-600 truncate mt-1">
-                            {lastMessage}
+                            {getLastMessage(room)}
                           </p>
-                          <span className="text-xs text-gray-500 whitespace-nowrap">
-                            {formatTimeDistance(updatedTime)}
-                          </span>
-                          <div className="flex items-center gap-2 mt-2">
+
+                          {/* Show last message sender if available */}
+                          {room.last_message &&
+                            typeof room.last_message === "object" && (
+                              <p className="text-xs text-gray-500 truncate">
+                                From: {(room.last_message as any).sender}
+                              </p>
+                            )}
+
+                          <div className="flex items-center gap-2 mt-1">
+                            {/* Unread badge */}
+                            {unreadCount > 0 && (
+                              <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                                {unreadCount} unread
+                              </span>
+                            )}
+
                             {room.is_group && (
-                              <span
-                                className={`px-2 py-1 text-xs rounded-full ${
-                                  room.is_group
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
+                              <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-800 rounded-full">
                                 {room.members?.length || 0} members
                               </span>
                             )}
@@ -1161,7 +1234,7 @@ export default function ChatRoomsPage() {
                               key={message.id}
                               className={`flex gap-3 mb-4 group ${
                                 isStaffOrAdmin ? "justify-end" : ""
-                              } ${isSystemMessage ? "justify-center" : ""}`}
+                              } ${isSystemMessage ? "justify-start" : ""}`}
                             >
                               {!isStaffOrAdmin && !isSystemMessage && (
                                 <div className="flex-shrink-0">
@@ -1207,31 +1280,14 @@ export default function ChatRoomsPage() {
                                     </span>
                                   </div>
                                 )}
-                                {/* Reply indicator in message
-                                {message.is_reply && message.reply_to && (
-                                  <div className="mb-2 ml-2 border-l-2 border-blue-300 pl-2">
-                                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                                      <Reply className="h-3 w-3" />
-                                      <span>Replying to:</span>
-                                    </div>
-                                    <div className="text-xs text-gray-700 bg-gray-50 p-1 rounded mt-1 truncate">
-                                      {message.reply_to.content?.substring(
-                                        0,
-                                        50
-                                      )}
-                                      {message.reply_to.content &&
-                                        message.reply_to.content.length > 50 &&
-                                        "..."}
-                                    </div>
-                                  </div>
-                                )} */}
+
                                 {/* Message bubble */}
                                 <div
                                   className={`px-4 py-2 relative ${
                                     isStaffOrAdmin
                                       ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
-                                      : isSystemMessage
-                                      ? "bg-gray-100 text-gray-700 text-center rounded-lg italic"
+                                      : !isSystemMessage
+                                      ? "bg-gray-100 text-gray-700 text-center rounded-lg "
                                       : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
                                   }`}
                                 >
