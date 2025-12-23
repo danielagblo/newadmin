@@ -262,6 +262,7 @@ export interface ChatRoom {
   members: User[];
   messages?: Message[];
   total_unread?: number;
+  chatroom_id?: string;
   created_at: string;
 }
 

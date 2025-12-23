@@ -4,7 +4,7 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { chatRoomsApi } from "@/lib/api/chats";
+import { chatRoomsApi, messagesApi } from "@/lib/api/chats";
 import { usersApi } from "@/lib/api/users";
 import { ChatRoom, Message, User } from "@/lib/types";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
@@ -12,29 +12,26 @@ import {
   Check,
   ChevronLeft,
   File,
-  Image as ImageIcon,
-  Lock,
-  MessageSquare,
-  Mic,
-  Plus,
-  RefreshCw,
-  Search,
-  Send,
-  Unlock,
-  User as UserIcon,
-  Users,
-  Video
+  Reply,
+  MessageCircle,
+  AlertCircle,
+  UserCheck,
 } from "lucide-react";
 import Image from "next/image";
-import React, { useEffect, useRef, useState } from "react";
+import useWsChat from "@/lib/hooks/useWsChat";
+import { useEffect, useRef, useState } from "react";
 
 // Extended types to handle missing properties
 type ExtendedChatRoom = ChatRoom & {
   status?: "open" | "closed";
-  last_message?: string;
+  last_message?: any; // Changed from string to any to handle object
   updated_at?: string;
   messages?: ExtendedMessage[];
   profile_picture?: string | null;
+  // Add missing fields from WebSocket
+  other_user?: string; // From WebSocket
+  other_user_avatar?: string | null;
+  unread?: number; // From WebSocket (not total_unread)
 };
 
 type ExtendedUser = User & {
@@ -52,6 +49,8 @@ type ExtendedMessage = Message & {
   chat_room?: number;
   sender?: ExtendedUser;
   updated_at: string;
+  is_reply?: boolean;
+  reply_to?: ExtendedMessage;
 };
 
 export default function ChatRoomsPage() {
@@ -68,7 +67,6 @@ export default function ChatRoomsPage() {
   const [newMessage, setNewMessage] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
-  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [filterOption, setFilterOption] = useState("All");
   const [openFilter, setOpenFilter] = useState(false);
@@ -78,24 +76,204 @@ export default function ChatRoomsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const [replyingTo, setReplyingTo] = useState<ExtendedMessage | null>(null);
+
+  // Function to handle reply to a specific message
+  const handleReplyToMessage = (message: ExtendedMessage) => {
+    setReplyingTo(message);
+    setNewMessage("");
+    // Scroll to input and focus
+    setTimeout(() => {
+      const input = document.querySelector(
+        'input[type="text"]'
+      ) as HTMLInputElement;
+      input?.focus();
+    }, 100);
+  };
+
+  // Function to detect message type
+  const getMessageType = (message: ExtendedMessage) => {
+    const sender = message.sender;
+
+    // Use backend properties to determine type
+    if (sender?.is_superuser) return "admin";
+    if (sender?.is_staff) return "staff";
+
+    // Default to customer if not staff/superuser
+    return "customer";
+  };
+
+  // Function to get message type icon
+  const getMessageTypeIcon = (type: string) => {
+    switch (type) {
+      case "admin":
+        return UserCheck;
+      case "staff":
+        return AlertCircle;
+      case "customer":
+        return MessageCircle;
+      default:
+        return MessageCircle;
+    }
+  };
+
+  // Function to get message type color
+  const getMessageTypeColor = (type: string, isStaffOrAdmin: boolean) => {
+    // If it's the current user's message, always use admin/staff colors
+    if (isStaffOrAdmin) {
+      // You might want to check if current user is admin or staff
+      // For now, assuming current user is admin/staff
+      return "bg-blue-100 text-blue-800 border-blue-200";
+    }
+
+    switch (type) {
+      case "admin":
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case "staff":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "customer":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  // Enhanced handleCloseCase with messagesApi.close
+  const handleCloseCase = async () => {
+    if (!selectedRoom) return;
+
+    if (
+      window.confirm(
+        `Are you sure you want to close "${selectedRoom.name}"? This will archive the conversation.`
+      )
+    ) {
+      try {
+        // Try to close via messagesApi if we have messages
+        if (messages.length > 0) {
+          // Find the first non-system message to close
+          const messageToClose = messages.find((msg) => msg.sender?.id !== 0);
+          if (messageToClose) {
+            await messagesApi.close(messageToClose.id);
+          }
+        }
+
+        // Update selected room locally
+        setSelectedRoom((prev) =>
+          prev ? { ...prev, status: "closed" } : null
+        );
+
+        // Update chat rooms list
+        setChatRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id ? { ...room, status: "closed" } : room
+          )
+        );
+
+        // Add system message
+        const systemMessage: ExtendedMessage = {
+          id: Date.now(),
+          content: "Case closed by support agent.",
+          sender: {
+            id: 0,
+            name: "System",
+            email: "system@example.com",
+          } as ExtendedUser,
+          room: selectedRoom.id,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, systemMessage]);
+
+        alert("Case closed successfully");
+      } catch (error) {
+        console.error("Error closing case:", error);
+        // Fallback: just update locally
+        setSelectedRoom((prev) =>
+          prev ? { ...prev, status: "closed" } : null
+        );
+        setChatRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id ? { ...room, status: "closed" } : room
+          )
+        );
+        alert("Case closed locally");
+      }
+    }
+  };
+
+  const ws = useWsChat();
 
   useEffect(() => {
-    fetchChatRooms();
+    // Connect to chatrooms list via websocket and fetch users via REST
+    try {
+      ws.connectToChatroomsList();
+      ws.connectToUnreadCount();
+    } catch {}
     fetchUsers();
+    // cleanup when unmount
+    return () => {
+      try {
+        ws.closeAll();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  // Sync chatRooms from websocket-backed hook
   useEffect(() => {
-    // Initialize unread counts from chat rooms
-    const initialUnreadCounts: Record<number, number> = {};
-    chatRooms.forEach((room) => {
-      initialUnreadCounts[room.id] = room.total_unread || 0;
+    try {
+      if (Array.isArray(ws.chatrooms)) {
+        setChatRooms(ws.chatrooms as ExtendedChatRoom[]);
+
+        // Update unread counts from each room's unread field
+        const newUnreadCounts: Record<number, number> = {};
+        ws.chatrooms.forEach((room: any) => {
+          if (room.id && room.unread !== undefined) {
+            newUnreadCounts[room.id] = room.unread;
+          }
+        });
+        setUnreadCounts(newUnreadCounts);
+      }
+    } catch {}
+  }, [ws.chatrooms]);
+
+  // Sync messages for selected room from websocket-backed hook
+  useEffect(() => {
+    try {
+      if (!selectedRoom) return;
+      const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
+      const msgs = (ws.messages as any)[key] || [];
+      setMessages(msgs as ExtendedMessage[]);
+
+      // Mark room as read when messages are loaded
+      if (msgs.length > 0) {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [selectedRoom.id]: 0,
+        }));
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRoom, ws.messages]);
+
+  // Sync global unread count
+  useEffect(() => {
+    // Update from WebSocket unreadCount
+    setUnreadCounts((prev) => {
+      const newCounts = { ...prev };
+      // Update each room's unread count based on ws.unreadCount
+      // You might need a different strategy here depending on your needs
+      return newCounts;
     });
-    setUnreadCounts(initialUnreadCounts);
-  }, [chatRooms]);
+  }, [ws.unreadCount]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -105,52 +283,11 @@ export default function ChatRoomsPage() {
     try {
       const data = await usersApi.list();
       setUsers(data as ExtendedUser[]);
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching users:", error);
-    }
-  };
-
-  const fetchChatRooms = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params: any = {
-        ordering: "-updated_at",
-      };
-
-      const data = await chatRoomsApi.list(params);
-      setChatRooms((Array.isArray(data) ? data : []) as ExtendedChatRoom[]);
-    } catch (error: any) {
-      console.error("Error fetching chat rooms:", error);
-      const errorMessage =
-        error?.response?.data?.detail ||
-        error?.message ||
-        "Failed to fetch chat rooms";
-      setError(errorMessage);
-      setChatRooms([]);
-    } finally {
+      setError("Failed to load users");
       setLoading(false);
-    }
-  };
-
-  const fetchMessages = async (roomId: number) => {
-    if (!roomId) return;
-
-    setLoadingMessages(true);
-    try {
-      const data = await chatRoomsApi.getMessages(roomId);
-      setMessages(data as ExtendedMessage[]);
-
-      // Mark messages as read when opening the room
-      setUnreadCounts((prev) => ({
-        ...prev,
-        [roomId]: 0,
-      }));
-    } catch (error: any) {
-      console.error("Error fetching messages:", error);
-      setMessages([]);
-    } finally {
-      setLoadingMessages(false);
     }
   };
 
@@ -159,26 +296,23 @@ export default function ChatRoomsPage() {
       // Prefer backend chatroomid endpoint which returns/creates a room for the given email
       let newRoom: any = null;
       try {
-        newRoom = await chatRoomsApi.getByEmail(user.email || '');
+        if (user.email) {
+          newRoom = await chatRoomsApi.getByEmail(user.email);
+        }
       } catch (err) {
-        console.warn('chatroomid endpoint failed, falling back to create:', err);
+        console.warn(
+          "chatroomid endpoint failed, falling back to create:",
+          err
+        );
       }
 
       if (!newRoom) {
-        // Fallback: create a new chat room for the selected user
-        const roomId =
-          typeof crypto !== "undefined" &&
-            typeof (crypto as any).randomUUID === "function"
-            ? (crypto as any).randomUUID()
-            : undefined;
-
         const roomPayload: any = {
           name: `${user.name} - Support Case`,
+          email: user?.email,
           is_group: false,
           members: [user.id],
         };
-
-        if (roomId) roomPayload.room_id = roomId;
 
         newRoom = await chatRoomsApi.create(roomPayload);
       }
@@ -186,13 +320,15 @@ export default function ChatRoomsPage() {
       // Add the returned room to the chat rooms list
       const extendedRoom: ExtendedChatRoom = {
         ...newRoom,
-        status: newRoom.status || "open",
-        last_message: newRoom.last_message || "Case opened by support agent.",
-        updated_at: newRoom.updated_at || new Date().toISOString(),
+        status: newRoom?.status || "open",
+        last_message: newRoom?.last_message || "Case opened by support agent.",
+        updated_at: newRoom?.updated_at || new Date().toISOString(),
         messages: [],
         profile_picture: user.profile_picture,
-        members: newRoom.members || [user],
+        members: newRoom?.members || [user],
       };
+
+      console.log("Current Room: ", extendedRoom);
 
       // Add to chat rooms list and select it
       setChatRooms((prev) => [extendedRoom, ...prev]);
@@ -223,7 +359,21 @@ export default function ChatRoomsPage() {
 
   const handleSelectRoom = async (room: ExtendedChatRoom) => {
     setSelectedRoom(room);
-    await fetchMessages(room.id);
+    try {
+      const key = String(room.room_id ?? room.id ?? "");
+      await ws.connectToRoom(key);
+
+      // Mark as read when selecting room
+      await ws.markAsRead(key);
+
+      // Clear unread count for this room
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [room.id]: 0,
+      }));
+    } catch (e) {
+      console.error("Failed to connect to room via websocket", e);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -231,47 +381,43 @@ export default function ChatRoomsPage() {
       return;
 
     try {
-      const message = {
-        content: newMessage.trim(),
-        chat_room: selectedRoom.id,
-      };
-
-      // Send message API call would go here
-      console.log("Sending message:", message);
-
-      // For now, simulate adding message
-      const tempMessage: ExtendedMessage = {
+      // Build optimistic message
+      const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const roomKey = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
+      const optimistic: ExtendedMessage = {
         id: Date.now(),
         content: newMessage.trim(),
         sender: {
           id: 1,
-          name: "Current User",
-          email: "user@example.com",
+          name: "Support Agent",
+          email: "agent@example.com",
+          profile_picture: null,
+          is_staff: true,
         } as ExtendedUser,
-        room: selectedRoom.id,
+        room: roomKey as any,
+        chat_room: roomKey as any,
         is_read: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, tempMessage]);
+      // Optimistically add to UI
+      try {
+        ws.addLocalMessage(roomKey, optimistic as any);
+      } catch {}
 
-      // Update the chat room's last message
-      setChatRooms((prev) =>
-        prev.map((room) =>
-          room.id === selectedRoom.id
-            ? {
-              ...room,
-              last_message: newMessage.trim(),
-              updated_at: new Date().toISOString(),
-            }
-            : room
-        )
-      );
-
+      // Send via websocket (no REST fallback; rely on server to echo/confirm)
+      try {
+        await ws.sendMessage(roomKey, newMessage.trim(), tempId);
+      } catch (err) {
+        console.error("WS send failed", err);
+        // The UI keeps the optimistic message; consider showing an error state
+      }
+    } catch (err) {
+      console.error("Error sending message:", err);
+    } finally {
       setNewMessage("");
-    } catch (error) {
-      console.error("Error sending message:", error);
+      setReplyingTo(null);
     }
   };
 
@@ -285,8 +431,8 @@ export default function ChatRoomsPage() {
       const fileType = file.type.startsWith("video/")
         ? "video"
         : file.type.startsWith("audio/")
-          ? "audio"
-          : "image";
+        ? "audio"
+        : "image";
 
       // Create message with attachment
       const messageWithAttachment: ExtendedMessage = {
@@ -294,8 +440,8 @@ export default function ChatRoomsPage() {
         content: "",
         sender: {
           id: 1,
-          name: "Current User",
-          email: "user@example.com",
+          name: "Support Agent",
+          email: "agent@example.com",
         } as ExtendedUser,
         room: selectedRoom.id,
         is_read: true,
@@ -319,16 +465,16 @@ export default function ChatRoomsPage() {
         fileType === "image"
           ? "📷 Image"
           : fileType === "video"
-            ? "🎥 Video"
-            : "🎵 Audio";
+          ? "🎥 Video"
+          : "🎵 Audio";
       setChatRooms((prev) =>
         prev.map((room) =>
           room.id === selectedRoom.id
             ? {
-              ...room,
-              last_message: lastMessage,
-              updated_at: new Date().toISOString(),
-            }
+                ...room,
+                last_message: lastMessage,
+                updated_at: new Date().toISOString(),
+              }
             : room
         )
       );
@@ -366,8 +512,8 @@ export default function ChatRoomsPage() {
           content: "",
           sender: {
             id: 1,
-            name: "Current User",
-            email: "user@example.com",
+            name: "Support Agent",
+            email: "agent@example.com",
           } as ExtendedUser,
           room: selectedRoom.id,
           is_read: true,
@@ -391,10 +537,10 @@ export default function ChatRoomsPage() {
           prev.map((room) =>
             room.id === selectedRoom.id
               ? {
-                ...room,
-                last_message: "🎵 Voice message",
-                updated_at: new Date().toISOString(),
-              }
+                  ...room,
+                  last_message: "🎵 Voice message",
+                  updated_at: new Date().toISOString(),
+                }
               : room
           )
         );
@@ -419,50 +565,6 @@ export default function ChatRoomsPage() {
       mediaRecorderRef.current.stop();
     }
     setIsRecording(false);
-  };
-
-  const handleCloseCase = async () => {
-    if (!selectedRoom) return;
-
-    if (
-      window.confirm(
-        `Are you sure you want to close "${selectedRoom.name}"? This will archive the conversation.`
-      )
-    ) {
-      try {
-        // Update selected room locally
-        setSelectedRoom((prev) =>
-          prev ? { ...prev, status: "closed" } : null
-        );
-
-        // Update chat rooms list
-        setChatRooms((prev) =>
-          prev.map((room) =>
-            room.id === selectedRoom.id ? { ...room, status: "closed" } : room
-          )
-        );
-
-        // Add system message
-        const systemMessage: ExtendedMessage = {
-          id: Date.now(),
-          content: "Case closed by support agent.",
-          sender: {
-            id: 0,
-            name: "System",
-            email: "system@example.com",
-          } as ExtendedUser,
-          room: selectedRoom.id,
-          is_read: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        setMessages((prev) => [...prev, systemMessage]);
-      } catch (error) {
-        console.error("Error closing case:", error);
-        alert("Failed to close case. Please try again.");
-      }
-    }
   };
 
   const handleReopenCase = async () => {
@@ -570,6 +672,7 @@ export default function ChatRoomsPage() {
       filtered = filtered.filter(
         (room) =>
           room.name.toLowerCase().includes(term) ||
+          room.other_user?.toLowerCase().includes(term) || // Search by other_user
           room.members?.some((member) => {
             if (typeof member === "object") {
               return (
@@ -589,7 +692,7 @@ export default function ChatRoomsPage() {
     } else if (filterOption === "Closed") {
       filtered = filtered.filter((room) => room.status === "closed");
     } else if (filterOption === "Unread") {
-      filtered = filtered.filter((room) => (unreadCounts[room.id] || 0) > 0);
+      filtered = filtered.filter((room) => getUnreadCount(room.id) > 0);
     } else if (filterOption === "Recent") {
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       filtered = filtered.filter(
@@ -601,14 +704,19 @@ export default function ChatRoomsPage() {
   };
 
   const getUnreadCount = (roomId: number) => {
+    // Use the unreadCounts state (updated from WebSocket)
     return unreadCounts[roomId] || 0;
   };
 
   const getLastMessage = (room: ExtendedChatRoom) => {
-    if (room.last_message) {
-      return room.last_message;
+    // Check if we have last_message object from WebSocket
+    if (room.last_message && typeof room.last_message === "object") {
+      const lastMsg = room.last_message as any;
+      return lastMsg.text || "No messages yet";
     }
-    return "No messages yet";
+
+    // Fallback to string last_message or default
+    return (room.last_message as string) || "No messages yet";
   };
 
   const getAvatarForRoom = (room: ExtendedChatRoom) => {
@@ -616,7 +724,15 @@ export default function ChatRoomsPage() {
       return { type: "icon" as const, icon: Users };
     }
 
-    // For direct messages, try to get the other user's profile picture
+    // Use the other_user_avatar from WebSocket if available
+    if (room.other_user_avatar) {
+      return {
+        type: "image" as const,
+        url: room.other_user_avatar,
+      };
+    }
+
+    // Fallback to checking members (for backward compatibility)
     if (room.members && room.members.length > 0) {
       const otherMember = room.members.find((member: any) =>
         typeof member === "object" ? member.id !== 1 : member !== 1
@@ -637,6 +753,12 @@ export default function ChatRoomsPage() {
   };
 
   const getRoomDisplayName = (room: ExtendedChatRoom) => {
+    // Use other_user from WebSocket (your data shows "other_user": "Daniel AGBLO")
+    if (room.other_user) {
+      return room.other_user;
+    }
+
+    // Fallback to room name
     return room.name;
   };
 
@@ -646,6 +768,11 @@ export default function ChatRoomsPage() {
 
   // Helper function to get room updated_at or fallback to created_at
   const getRoomUpdatedTime = (room: ExtendedChatRoom) => {
+    // Try last_message timestamp first
+    if (room.last_message && typeof room.last_message === "object") {
+      return (room.last_message as any).created_at || "";
+    }
+
     return room.updated_at || room.created_at || "";
   };
 
@@ -676,7 +803,17 @@ export default function ChatRoomsPage() {
               </h2>
               <div className="flex gap-2">
                 <Button
-                  onClick={fetchChatRooms}
+                  onClick={() => {
+                    setLoading(true);
+                    try {
+                      ws.connectToChatroomsList();
+                    } catch (e) {
+                      console.error("Failed to refresh chatrooms via WS", e);
+                    } finally {
+                      // show spinner briefly
+                      setTimeout(() => setLoading(false), 800);
+                    }
+                  }}
                   variant="outline"
                   size="sm"
                   className="h-8 w-8 p-0"
@@ -715,8 +852,9 @@ export default function ChatRoomsPage() {
                 </span>
                 <button type="button" className="p-1">
                   <ChevronLeft
-                    className={`h-4 w-4 transition-transform duration-200 ${openFilter ? "-rotate-90" : ""
-                      }`}
+                    className={`h-4 w-4 transition-transform duration-200 ${
+                      openFilter ? "-rotate-90" : ""
+                    }`}
                   />
                 </button>
               </div>
@@ -727,10 +865,11 @@ export default function ChatRoomsPage() {
                     (option) => (
                       <button
                         key={option}
-                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${filterOption === option
+                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${
+                          filterOption === option
                             ? "bg-blue-50 text-blue-600"
                             : ""
-                          }`}
+                        }`}
                         onClick={() => {
                           setFilterOption(option);
                           setOpenFilter(false);
@@ -764,7 +903,6 @@ export default function ChatRoomsPage() {
                 {getFilteredChatRooms().map((room) => {
                   const isActive = selectedRoom?.id === room.id;
                   const isClosed = room.status === "closed";
-                  const lastMessage = getLastMessage(room);
                   const unreadCount = getUnreadCount(room.id);
                   const avatarInfo = getAvatarForRoom(room);
                   const displayName = getRoomDisplayName(room);
@@ -773,16 +911,18 @@ export default function ChatRoomsPage() {
                   return (
                     <div
                       key={room.id}
-                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${isActive ? "bg-blue-50" : ""
-                        } ${isClosed ? "opacity-75" : ""}`}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        isActive ? "bg-blue-50" : ""
+                      } ${isClosed ? "opacity-75" : ""}`}
                       onClick={() => handleSelectRoom(room)}
                     >
                       <div className="flex items-start gap-3">
                         {/* Avatar with status */}
                         <div className="relative flex-shrink-0">
                           <div
-                            className={`w-12 h-12 rounded-full flex items-center justify-center ${isClosed ? "bg-gray-100" : "bg-blue-100"
-                              }`}
+                            className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                              isClosed ? "bg-gray-100" : "bg-blue-100"
+                            }`}
                           >
                             {avatarInfo.type === "image" ? (
                               <div className="relative w-full h-full">
@@ -796,14 +936,15 @@ export default function ChatRoomsPage() {
                               </div>
                             ) : (
                               <avatarInfo.icon
-                                className={`h-6 w-6 ${isClosed ? "text-gray-400" : "text-blue-600"
-                                  }`}
+                                className={`h-6 w-6 ${
+                                  isClosed ? "text-gray-400" : "text-blue-600"
+                                }`}
                               />
                             )}
                           </div>
                           {unreadCount > 0 && (
                             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                              {unreadCount}
+                              {unreadCount > 9 ? "9+" : unreadCount}
                             </span>
                           )}
                         </div>
@@ -821,22 +962,33 @@ export default function ChatRoomsPage() {
                                 </span>
                               )}
                             </div>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                              {formatTimeDistance(updatedTime)}
+                            </span>
                           </div>
 
                           <p className="text-sm text-gray-600 truncate mt-1">
-                            {lastMessage}
+                            {getLastMessage(room)}
                           </p>
-                          <span className="text-xs text-gray-500 whitespace-nowrap">
-                            {formatTimeDistance(updatedTime)}
-                          </span>
-                          <div className="flex items-center gap-2 mt-2">
+
+                          {/* Show last message sender if available */}
+                          {room.last_message &&
+                            typeof room.last_message === "object" && (
+                              <p className="text-xs text-gray-500 truncate">
+                                From: {(room.last_message as any).sender}
+                              </p>
+                            )}
+
+                          <div className="flex items-center gap-2 mt-1">
+                            {/* Unread badge */}
+                            {unreadCount > 0 && (
+                              <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                                {unreadCount} unread
+                              </span>
+                            )}
+
                             {room.is_group && (
-                              <span
-                                className={`px-2 py-1 text-xs rounded-full ${room.is_group
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-gray-100 text-gray-800"
-                                  }`}
-                              >
+                              <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-800 rounded-full">
                                 {room.members?.length || 0} members
                               </span>
                             )}
@@ -877,7 +1029,10 @@ export default function ChatRoomsPage() {
               <div className="p-4 border-b flex items-center justify-between bg-gray-50">
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => setSelectedRoom(null)}
+                    onClick={() => {
+                      setSelectedRoom(null);
+                      setReplyingTo(null);
+                    }}
                     className="md:hidden mr-2"
                   >
                     <ChevronLeft className="h-5 w-5" />
@@ -885,24 +1040,27 @@ export default function ChatRoomsPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedRoom.status === "closed"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          selectedRoom.status === "closed"
                             ? "bg-gray-100"
                             : "bg-blue-100"
-                          }`}
+                        }`}
                       >
                         {selectedRoom.is_group ? (
                           <Users
-                            className={`h-5 w-5 ${selectedRoom.status === "closed"
+                            className={`h-5 w-5 ${
+                              selectedRoom.status === "closed"
                                 ? "text-gray-400"
                                 : "text-blue-600"
-                              }`}
+                            }`}
                           />
                         ) : (
                           <UserIcon
-                            className={`h-5 w-5 ${selectedRoom.status === "closed"
+                            className={`h-5 w-5 ${
+                              selectedRoom.status === "closed"
                                 ? "text-gray-400"
                                 : "text-blue-600"
-                              }`}
+                            }`}
                           />
                         )}
                       </div>
@@ -970,6 +1128,7 @@ export default function ChatRoomsPage() {
                             prev.filter((room) => room.id !== selectedRoom.id)
                           );
                           setSelectedRoom(null);
+                          setReplyingTo(null);
                         } catch (error) {
                           console.error("Error deleting chat room:", error);
                           alert("Failed to delete chat room");
@@ -998,6 +1157,45 @@ export default function ChatRoomsPage() {
                   </div>
                 ) : (
                   <div className="flex-1 overflow-y-auto p-4">
+                    {/* Reply indicator */}
+                    {replyingTo && (
+                      <div className="mb-4 bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-lg">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Reply className="h-4 w-4 text-blue-600" />
+                              <span className="text-sm font-medium text-blue-600">
+                                Replying to:
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-700 bg-white p-2 rounded border border-blue-100">
+                              {replyingTo.content ? (
+                                <p className="truncate">{replyingTo.content}</p>
+                              ) : replyingTo.attachments ? (
+                                <p className="text-gray-500">
+                                  {replyingTo.attachments[0]?.file_type ===
+                                  "image"
+                                    ? "📷 Image"
+                                    : replyingTo.attachments[0]?.file_type ===
+                                      "video"
+                                    ? "🎥 Video"
+                                    : "🎵 Audio"}
+                                </p>
+                              ) : (
+                                <p className="text-gray-500">Message</p>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setReplyingTo(null)}
+                            className="text-gray-400 hover:text-gray-600 ml-2"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {groupMessagesByDate(messages).map((group) => (
                       <div key={group.label} className="mb-6">
                         <div className="flex items-center justify-center my-4">
@@ -1007,20 +1205,30 @@ export default function ChatRoomsPage() {
                         </div>
 
                         {group.messages.map((message) => {
-                          const isCurrentUser = message.sender?.id === 1;
                           const isSystemMessage = message.sender?.id === 0;
+                          const isStaffOrAdmin =
+                            message?.sender?.is_staff ||
+                            message?.sender?.is_superuser;
                           const senderAvatar = message.sender?.profile_picture;
                           const senderInitial =
                             message.sender?.name?.charAt(0)?.toUpperCase() ||
                             "U";
+                          const messageType = getMessageType(message);
+                          const MessageTypeIcon =
+                            getMessageTypeIcon(messageType);
+                          const messageTypeColor = getMessageTypeColor(
+                            messageType,
+                            isStaffOrAdmin
+                          );
 
                           return (
                             <div
                               key={message.id}
-                              className={`flex gap-3 mb-4 ${isCurrentUser ? "justify-end" : ""
-                                } ${isSystemMessage ? "justify-center" : ""}`}
+                              className={`flex gap-3 mb-4 group ${
+                                isStaffOrAdmin ? "justify-end" : ""
+                              } ${isSystemMessage ? "justify-start" : ""}`}
                             >
-                              {!isCurrentUser && !isSystemMessage && (
+                              {!isStaffOrAdmin && !isSystemMessage && (
                                 <div className="flex-shrink-0">
                                   <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                                     {senderAvatar ? (
@@ -1043,27 +1251,37 @@ export default function ChatRoomsPage() {
                               )}
 
                               <div
-                                className={`${isSystemMessage ? "max-w-full" : "max-w-[70%]"
-                                  }`}
+                                className={`${
+                                  isSystemMessage ? "max-w-full" : "max-w-[70%]"
+                                }`}
                               >
                                 {/* Sender name for incoming messages */}
-                                {!isCurrentUser && !isSystemMessage && (
-                                  <p className="text-xs font-medium text-gray-700 mb-1">
-                                    {typeof message.sender === "object"
-                                      ? message.sender.name ||
-                                      message.sender.email
-                                      : `User ${message.sender}`}
-                                  </p>
+                                {!isStaffOrAdmin && !isSystemMessage && (
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-xs font-medium text-gray-700">
+                                      {typeof message.sender === "object"
+                                        ? message.sender.name ||
+                                          message.sender.email
+                                        : `User ${message.sender}`}
+                                    </p>
+                                    <span
+                                      className={`text-xs px-2 py-0.5 rounded-full border ${messageTypeColor} flex items-center gap-1`}
+                                    >
+                                      <MessageTypeIcon className="h-3 w-3" />
+                                      {messageType}
+                                    </span>
+                                  </div>
                                 )}
 
                                 {/* Message bubble */}
                                 <div
-                                  className={`px-4 py-2 ${isCurrentUser
+                                  className={`px-4 py-2 relative ${
+                                    isStaffOrAdmin
                                       ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
-                                      : isSystemMessage
-                                        ? "bg-gray-100 text-gray-700 text-center rounded-lg italic"
-                                        : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
-                                    }`}
+                                      : !isSystemMessage
+                                      ? "bg-gray-100 text-gray-700 text-center rounded-lg "
+                                      : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
+                                  }`}
                                 >
                                   {/* Text content */}
                                   {message.content && (
@@ -1072,7 +1290,7 @@ export default function ChatRoomsPage() {
                                     </p>
                                   )}
 
-                                  {/* Attachments - Properly scaled but full size on click */}
+                                  {/* Attachments */}
                                   {message.attachments &&
                                     message.attachments.map((attachment) => {
                                       const FileIcon = getFileIcon(
@@ -1176,68 +1394,81 @@ export default function ChatRoomsPage() {
 
                                           {attachment.file_type ===
                                             "document" && (
-                                              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                                <div className="flex items-center gap-3">
-                                                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                                    <FileIcon className="h-5 w-5 text-gray-600" />
-                                                  </div>
-                                                  <div className="flex-1">
-                                                    <p className="text-sm font-medium text-gray-900">
-                                                      {attachment.file_name ||
-                                                        "Document"}
-                                                    </p>
-                                                    {attachment.file_size && (
-                                                      <p className="text-xs text-gray-500">
-                                                        {(
-                                                          attachment.file_size /
-                                                          1024
-                                                        ).toFixed(2)}{" "}
-                                                        KB
-                                                      </p>
-                                                    )}
-                                                  </div>
-                                                  <a
-                                                    href={attachment.file_url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 hover:text-blue-800"
-                                                  >
-                                                    <File className="h-5 w-5" />
-                                                  </a>
+                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                              <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                                  <FileIcon className="h-5 w-5 text-gray-600" />
                                                 </div>
+                                                <div className="flex-1">
+                                                  <p className="text-sm font-medium text-gray-900">
+                                                    {attachment.file_name ||
+                                                      "Document"}
+                                                  </p>
+                                                  {attachment.file_size && (
+                                                    <p className="text-xs text-gray-500">
+                                                      {(
+                                                        attachment.file_size /
+                                                        1024
+                                                      ).toFixed(2)}{" "}
+                                                      KB
+                                                    </p>
+                                                  )}
+                                                </div>
+                                                <a
+                                                  href={attachment.file_url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-blue-600 hover:text-blue-800"
+                                                >
+                                                  <File className="h-5 w-5" />
+                                                </a>
                                               </div>
-                                            )}
+                                            </div>
+                                          )}
                                         </div>
                                       );
                                     })}
 
                                   {!isSystemMessage && (
-                                    <div
-                                      className={`flex items-center justify-end gap-2 mt-1 ${isCurrentUser ? "" : ""
-                                        }`}
-                                    >
+                                    <div className="flex items-center justify-end gap-2 mt-2">
                                       <span
-                                        className={`text-xs ${isCurrentUser
+                                        className={`text-xs ${
+                                          isStaffOrAdmin
                                             ? "text-blue-200"
                                             : "text-gray-500"
-                                          }`}
+                                        }`}
                                       >
                                         {formatTime(message.created_at)}
                                       </span>
-                                      {isCurrentUser && message.is_read && (
+                                      {isStaffOrAdmin && message.is_read && (
                                         <Check className="h-3 w-3 text-blue-200" />
                                       )}
+                                    </div>
+                                  )}
+
+                                  {/* Reply button (hover) */}
+                                  {!isStaffOrAdmin && !isSystemMessage && (
+                                    <div className="absolute -bottom-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() =>
+                                          handleReplyToMessage(message)
+                                        }
+                                        className="bg-white border border-gray-300 rounded-full p-1.5 shadow-md hover:bg-gray-50 hover:border-gray-400 transition-all"
+                                        title="Reply to this message"
+                                      >
+                                        <Reply className="h-4 w-4 text-gray-600" />
+                                      </button>
                                     </div>
                                   )}
                                 </div>
                               </div>
 
                               {/* Avatar for outgoing messages */}
-                              {isCurrentUser && (
+                              {isStaffOrAdmin && (
                                 <div className="flex-shrink-0">
                                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                                     <span className="text-xs font-medium text-blue-600">
-                                      U
+                                      A
                                     </span>
                                   </div>
                                 </div>
@@ -1276,6 +1507,7 @@ export default function ChatRoomsPage() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="p-3 text-gray-500 hover:text-gray-700"
+                        title="Attach file"
                       >
                         <ImageIcon className="h-5 w-5" />
                       </button>
@@ -1290,7 +1522,11 @@ export default function ChatRoomsPage() {
 
                       <input
                         type="text"
-                        placeholder="Type a message..."
+                        placeholder={
+                          replyingTo
+                            ? `Replying to message...`
+                            : "Type a message..."
+                        }
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyDown={(e) => {
@@ -1309,10 +1545,16 @@ export default function ChatRoomsPage() {
                             ? handleStopRecording
                             : handleStartRecording
                         }
-                        className={`p-3 ${isRecording
+                        className={`p-3 ${
+                          isRecording
                             ? "text-red-600 animate-pulse"
                             : "text-gray-500 hover:text-gray-700"
-                          }`}
+                        }`}
+                        title={
+                          isRecording
+                            ? "Stop recording"
+                            : "Record voice message"
+                        }
                       >
                         <Mic className="h-5 w-5" />
                       </button>
@@ -1323,7 +1565,17 @@ export default function ChatRoomsPage() {
                       disabled={!newMessage.trim()}
                       className="h-full px-4"
                     >
-                      <Send className="h-4 w-4" />
+                      {replyingTo ? (
+                        <>
+                          <Reply className="h-4 w-4 mr-2" />
+                          Reply
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Send
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
