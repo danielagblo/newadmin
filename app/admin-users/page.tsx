@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
-import { usersApi } from '@/lib/api/users';
-import { User } from '@/lib/types';
-import { format } from 'date-fns';
-import { Plus, Search, Shield, UserCheck, UserX, Settings } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from "react";
+import { Layout } from "@/components/layout/Layout";
+import { DataTable } from "@/components/ui/DataTable";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { usersApi } from "@/lib/api/users";
+import { User } from "@/lib/types";
+import { format } from "date-fns";
+import { Plus, Search, Shield, UserCheck, UserX, Settings } from "lucide-react";
 
 interface AdminAccessLimits {
   can_manage_users: boolean;
@@ -35,12 +35,12 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [formData, setFormData] = useState({
-    email: '',
-    phone: '',
-    name: '',
-    password: '',
+    email: "",
+    phone: "",
+    name: "",
+    password: "",
     is_superuser: false,
     is_staff: false,
   });
@@ -64,69 +64,80 @@ export default function AdminUsersPage() {
     setLoading(true);
     setError(null);
     try {
-      console.log('Fetching admin users with search term:', searchTerm || 'none');
+      console.log(
+        "Fetching admin users with search term:",
+        searchTerm || "none"
+      );
       const data = await usersApi.list(searchTerm || undefined);
-      console.log('Users fetched from API:', data);
-      console.log('Users data type:', typeof data);
-      console.log('Is array?', Array.isArray(data));
-      
+      console.log("Users fetched from API:", data);
+      console.log("Users data type:", typeof data);
+      console.log("Is array?", Array.isArray(data));
+
       const usersArray = Array.isArray(data) ? data : [];
       console.log(`Total users fetched: ${usersArray.length}`);
-      
+
       if (usersArray.length > 0) {
-        console.log('Sample user:', usersArray[0]);
-        console.log('Sample user is_staff:', usersArray[0].is_staff);
-        console.log('Sample user is_superuser:', usersArray[0].is_superuser);
+        console.log("Sample user:", usersArray[0]);
+        console.log("Sample user is_staff:", usersArray[0].is_staff);
+        console.log("Sample user is_superuser:", usersArray[0].is_superuser);
       }
-      
+
       setAllUsers(usersArray);
-      
+
       // Filter to show only admin users (staff or superuser)
       const admins = usersArray.filter((u: User) => {
         const isAdmin = u.is_staff || u.is_superuser;
         if (isAdmin) {
-          console.log(`Found admin user: ${u.name} (${u.email}) - staff: ${u.is_staff}, superuser: ${u.is_superuser}`);
+          console.log(
+            `Found admin user: ${u.name} (${u.email}) - staff: ${u.is_staff}, superuser: ${u.is_superuser}`
+          );
         }
         return isAdmin;
       });
-      
+
       setAdminUsers(admins);
-      console.log(`✅ Found ${admins.length} admin users out of ${usersArray.length} total users`);
-      
+      console.log(
+        `✅ Found ${admins.length} admin users out of ${usersArray.length} total users`
+      );
+
       if (admins.length === 0 && usersArray.length > 0) {
-        console.warn('⚠️ No admin users found. All users have is_staff=false and is_superuser=false');
+        console.warn(
+          "⚠️ No admin users found. All users have is_staff=false and is_superuser=false"
+        );
       }
     } catch (error: any) {
-      console.error('Error fetching admin users:', error);
-      console.error('Error response:', error?.response);
-      console.error('Error status:', error?.response?.status);
-      console.error('Error data:', error?.response?.data);
-      
-      let errorMessage = 'Failed to fetch admin users';
-      let errorDetails = '';
-      
+      console.error("Error fetching admin users:", error);
+      console.error("Error response:", error?.response);
+      console.error("Error status:", error?.response?.status);
+      console.error("Error data:", error?.response?.data);
+
+      let errorMessage = "Failed to fetch admin users";
+      let errorDetails = "";
+
       if (error?.response?.status === 404) {
-        errorMessage = 'Users endpoint not found (404)';
-        errorDetails = `The users API endpoint does not exist on your Django backend.\n\n` +
+        errorMessage = "Users endpoint not found (404)";
+        errorDetails =
+          `The users API endpoint does not exist on your Django backend.\n\n` +
           `Expected endpoint: /api-v1/admin/users/\n\n` +
           `Please check if the endpoint exists in your Django backend.`;
       } else if (error?.response?.status === 401) {
-        errorMessage = 'Authentication failed (401)';
-        errorDetails = 'Please log out and log in again.';
+        errorMessage = "Authentication failed (401)";
+        errorDetails = "Please log out and log in again.";
       } else if (error?.response?.status === 403) {
-        errorMessage = 'Access denied (403)';
-        errorDetails = 'You may not have permission to view users.';
+        errorMessage = "Access denied (403)";
+        errorDetails = "You may not have permission to view users.";
       } else if (error?.response?.data) {
-        errorMessage = 'API Error';
-        errorDetails = error.response.data.detail || 
-                      error.response.data.error_message || 
-                      error.response.data.message ||
-                      JSON.stringify(error.response.data);
+        errorMessage = "API Error";
+        errorDetails =
+          error.response.data.detail ||
+          error.response.data.error_message ||
+          error.response.data.message ||
+          JSON.stringify(error.response.data);
       } else if (error?.message) {
-        errorMessage = 'Error';
+        errorMessage = "Error";
         errorDetails = error.message;
       }
-      
+
       setError(`${errorMessage}\n\n${errorDetails}`);
       setAllUsers([]);
       setAdminUsers([]);
@@ -142,10 +153,10 @@ export default function AdminUsersPage() {
   const handleCreate = () => {
     setEditingUser(null);
     setFormData({
-      email: '',
-      phone: '',
-      name: '',
-      password: '',
+      email: "",
+      phone: "",
+      name: "",
+      password: "",
       is_superuser: false,
       is_staff: false,
     });
@@ -173,7 +184,7 @@ export default function AdminUsersPage() {
       email: user.email,
       phone: user.phone,
       name: user.name,
-      password: '',
+      password: "",
       is_superuser: user.is_superuser,
       is_staff: user.is_staff,
     });
@@ -204,8 +215,10 @@ export default function AdminUsersPage() {
       });
       fetchUsers();
     } catch (error: any) {
-      console.error('Error toggling staff status:', error);
-      window.alert(error?.response?.data?.detail || 'Failed to update staff status');
+      console.error("Error toggling staff status:", error);
+      window.alert(
+        error?.response?.data?.detail || "Failed to update staff status"
+      );
     }
   };
 
@@ -216,8 +229,10 @@ export default function AdminUsersPage() {
       });
       fetchUsers();
     } catch (error: any) {
-      console.error('Error toggling superuser status:', error);
-      window.alert(error?.response?.data?.detail || 'Failed to update superuser status');
+      console.error("Error toggling superuser status:", error);
+      window.alert(
+        error?.response?.data?.detail || "Failed to update superuser status"
+      );
     }
   };
 
@@ -228,14 +243,14 @@ export default function AdminUsersPage() {
         ...formData,
         is_staff: true, // Admin users must be staff
       };
-      
+
       if (editingUser) {
         await usersApi.update(editingUser.id, userData);
         // In a real app, you'd also update access limits via a separate API
         // await adminAccessApi.update(editingUser.id, accessLimits);
       } else {
         if (!formData.password) {
-          window.alert('Password is required for new admin users');
+          window.alert("Password is required for new admin users");
           return;
         }
         await usersApi.create(userData as any);
@@ -245,67 +260,81 @@ export default function AdminUsersPage() {
       setIsModalOpen(false);
       fetchUsers();
     } catch (error: any) {
-      console.error('Error saving admin user:', error);
-      window.alert(error?.response?.data?.detail || 'Failed to save admin user');
+      console.error("Error saving admin user:", error);
+      window.alert(
+        error?.response?.data?.detail || "Failed to save admin user"
+      );
     }
   };
 
   const columns = [
-    { key: 'id', header: 'ID' },
-    { key: 'name', header: 'Name' },
-    { key: 'email', header: 'Email' },
-    { key: 'phone', header: 'Phone' },
+    { key: "id", header: "ID" },
+    { key: "name", header: "Name" },
+    { key: "email", header: "Email" },
+    { key: "phone", header: "Phone" },
     {
-      key: 'is_superuser',
-      header: 'Superuser',
+      key: "is_superuser",
+      header: "Superuser",
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.is_superuser ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
-        }`}>
-          {user.is_superuser ? 'Yes' : 'No'}
+        <span
+          className={`px-2 py-1 rounded text-xs ${
+            user.is_superuser
+              ? "bg-purple-100 text-purple-800"
+              : "bg-gray-100 text-gray-800"
+          }`}
+        >
+          {user.is_superuser ? "Yes" : "No"}
         </span>
       ),
     },
     {
-      key: 'is_staff',
-      header: 'Staff',
+      key: "is_staff",
+      header: "Staff",
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.is_staff ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-        }`}>
-          {user.is_staff ? 'Yes' : 'No'}
+        <span
+          className={`px-2 py-1 rounded text-xs ${
+            user.is_staff
+              ? "bg-blue-100 text-blue-800"
+              : "bg-gray-100 text-gray-800"
+          }`}
+        >
+          {user.is_staff ? "Yes" : "No"}
         </span>
       ),
     },
     {
-      key: 'is_active',
-      header: 'Status',
+      key: "is_active",
+      header: "Status",
       render: (user: User) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {user.is_active ? 'Active' : 'Inactive'}
+        <span
+          className={`px-2 py-1 rounded text-xs ${
+            user.is_active
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
+          {user.is_active ? "Active" : "Inactive"}
         </span>
       ),
     },
     {
-      key: 'created_at',
-      header: 'Created',
-      render: (user: User) => format(new Date(user.created_at), 'MMM dd, yyyy'),
+      key: "created_at",
+      header: "Created",
+      render: (user: User) => format(new Date(user.created_at), "MMM dd, yyyy"),
     },
   ];
 
   const accessSections = [
-    { key: 'can_manage_users', label: 'Manage Users' },
-    { key: 'can_manage_products', label: 'Manage Products' },
-    { key: 'can_manage_categories', label: 'Manage Categories' },
-    { key: 'can_manage_locations', label: 'Manage Locations' },
-    { key: 'can_manage_coupons', label: 'Manage Coupons' },
-    { key: 'can_manage_subscriptions', label: 'Manage Subscriptions' },
-    { key: 'can_manage_reviews', label: 'Manage Reviews' },
-    { key: 'can_manage_chatrooms', label: 'Manage Chat Rooms' },
-    { key: 'can_manage_alerts', label: 'Manage Alerts' },
-    { key: 'can_manage_devices', label: 'Manage Devices' },
+    { key: "can_manage_users", label: "Manage Users" },
+    { key: "can_manage_products", label: "Manage Products" },
+    { key: "can_manage_categories", label: "Manage Categories" },
+    { key: "can_manage_locations", label: "Manage Locations" },
+    { key: "can_manage_coupons", label: "Manage Coupons" },
+    { key: "can_manage_subscriptions", label: "Manage Subscriptions" },
+    { key: "can_manage_reviews", label: "Manage Reviews" },
+    { key: "can_manage_chatrooms", label: "Manage Chat Rooms" },
+    { key: "can_manage_alerts", label: "Manage Alerts" },
+    { key: "can_manage_devices", label: "Manage Devices" },
   ];
 
   return (
@@ -313,8 +342,12 @@ export default function AdminUsersPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admin User Management</h1>
-            <p className="mt-2 text-gray-600">Manage admin access and permissions</p>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Admin User Management
+            </h1>
+            <p className="mt-2 text-gray-600">
+              Manage admin access and permissions
+            </p>
           </div>
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-2" />
@@ -326,7 +359,9 @@ export default function AdminUsersPage() {
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-start">
               <div className="flex-1">
-                <h3 className="text-sm font-medium text-red-800">Error Loading Admin Users</h3>
+                <h3 className="text-sm font-medium text-red-800">
+                  Error Loading Admin Users
+                </h3>
                 <p className="mt-1 text-sm text-red-700">{error}</p>
                 <button
                   onClick={() => fetchUsers()}
@@ -353,7 +388,8 @@ export default function AdminUsersPage() {
           </div>
 
           <div className="mb-4 text-sm text-gray-600">
-            Total admin users: {adminUsers.length} (showing staff and superusers only)
+            Total admin users: {adminUsers.length} (showing staff and superusers
+            only)
           </div>
 
           <DataTable
@@ -367,15 +403,23 @@ export default function AdminUsersPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => handleToggleStaff(user)}
-                  title={user.is_staff ? 'Remove Staff Access' : 'Grant Staff Access'}
+                  title={
+                    user.is_staff ? "Remove Staff Access" : "Grant Staff Access"
+                  }
                 >
-                  {user.is_staff ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                  {user.is_staff ? (
+                    <UserX className="h-4 w-4" />
+                  ) : (
+                    <UserCheck className="h-4 w-4" />
+                  )}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handleToggleSuperuser(user)}
-                  title={user.is_superuser ? 'Remove Superuser' : 'Grant Superuser'}
+                  title={
+                    user.is_superuser ? "Remove Superuser" : "Grant Superuser"
+                  }
                 >
                   <Shield className="h-4 w-4" />
                 </Button>
@@ -388,7 +432,7 @@ export default function AdminUsersPage() {
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          title={editingUser ? 'Edit Admin User' : 'Create Admin User'}
+          title={editingUser ? "Edit Admin User" : "Create Admin User"}
           size="lg"
         >
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -396,20 +440,26 @@ export default function AdminUsersPage() {
               label="Name"
               required
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
             />
             <Input
               label="Email"
               type="email"
               required
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
             />
             <Input
               label="Phone"
               required
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
             />
             {!editingUser && (
               <Input
@@ -417,7 +467,9 @@ export default function AdminUsersPage() {
                 type="password"
                 required
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
               />
             )}
             {editingUser && (
@@ -425,7 +477,9 @@ export default function AdminUsersPage() {
                 label="New Password (leave blank to keep current)"
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
               />
             )}
 
@@ -434,19 +488,27 @@ export default function AdminUsersPage() {
                 <input
                   type="checkbox"
                   checked={formData.is_staff}
-                  onChange={(e) => setFormData({ ...formData, is_staff: e.target.checked })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, is_staff: e.target.checked })
+                  }
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700">Staff Member</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Staff Member
+                </span>
               </label>
               <label className="flex items-center space-x-2">
                 <input
                   type="checkbox"
                   checked={formData.is_superuser}
-                  onChange={(e) => setFormData({ ...formData, is_superuser: e.target.checked })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, is_superuser: e.target.checked })
+                  }
                   className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 />
-                <span className="text-sm font-medium text-gray-700">Superuser (Full Access)</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Superuser (Full Access)
+                </span>
               </label>
             </div>
 
@@ -457,22 +519,35 @@ export default function AdminUsersPage() {
                   <Settings className="h-5 w-5" />
                   Access Limits
                 </h3>
-                
+
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-gray-700">Section Access:</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    Section Access:
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     {accessSections.map((section) => (
-                      <label key={section.key} className="flex items-center space-x-2">
+                      <label
+                        key={section.key}
+                        className="flex items-center space-x-2"
+                      >
                         <input
                           type="checkbox"
-                          checked={accessLimits[section.key as keyof AdminAccessLimits] as boolean}
-                          onChange={(e) => setAccessLimits({
-                            ...accessLimits,
-                            [section.key]: e.target.checked,
-                          })}
+                          checked={
+                            accessLimits[
+                              section.key as keyof AdminAccessLimits
+                            ] as boolean
+                          }
+                          onChange={(e) =>
+                            setAccessLimits({
+                              ...accessLimits,
+                              [section.key]: e.target.checked,
+                            })
+                          }
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <span className="text-sm text-gray-700">{section.label}</span>
+                        <span className="text-sm text-gray-700">
+                          {section.label}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -482,31 +557,43 @@ export default function AdminUsersPage() {
                   <Input
                     label="Max Daily Operations"
                     type="number"
-                    value={accessLimits.max_daily_operations || ''}
-                    onChange={(e) => setAccessLimits({
-                      ...accessLimits,
-                      max_daily_operations: e.target.value ? parseInt(e.target.value) : undefined,
-                    })}
+                    value={accessLimits.max_daily_operations || ""}
+                    onChange={(e) =>
+                      setAccessLimits({
+                        ...accessLimits,
+                        max_daily_operations: e.target.value
+                          ? parseInt(e.target.value)
+                          : undefined,
+                      })
+                    }
                     placeholder="Unlimited"
                   />
                   <Input
                     label="Max Users/Day"
                     type="number"
-                    value={accessLimits.max_users_per_day || ''}
-                    onChange={(e) => setAccessLimits({
-                      ...accessLimits,
-                      max_users_per_day: e.target.value ? parseInt(e.target.value) : undefined,
-                    })}
+                    value={accessLimits.max_users_per_day || ""}
+                    onChange={(e) =>
+                      setAccessLimits({
+                        ...accessLimits,
+                        max_users_per_day: e.target.value
+                          ? parseInt(e.target.value)
+                          : undefined,
+                      })
+                    }
                     placeholder="Unlimited"
                   />
                   <Input
                     label="Max Products/Day"
                     type="number"
-                    value={accessLimits.max_products_per_day || ''}
-                    onChange={(e) => setAccessLimits({
-                      ...accessLimits,
-                      max_products_per_day: e.target.value ? parseInt(e.target.value) : undefined,
-                    })}
+                    value={accessLimits.max_products_per_day || ""}
+                    onChange={(e) =>
+                      setAccessLimits({
+                        ...accessLimits,
+                        max_products_per_day: e.target.value
+                          ? parseInt(e.target.value)
+                          : undefined,
+                      })
+                    }
                     placeholder="Unlimited"
                   />
                 </div>
@@ -516,7 +603,8 @@ export default function AdminUsersPage() {
             {formData.is_superuser && (
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                 <p className="text-sm text-purple-800">
-                  <strong>Note:</strong> Superusers have full access to all sections and no operation limits.
+                  <strong>Note:</strong> Superusers have full access to all
+                  sections and no operation limits.
                 </p>
               </div>
             )}
@@ -537,4 +625,3 @@ export default function AdminUsersPage() {
     </Layout>
   );
 }
-
