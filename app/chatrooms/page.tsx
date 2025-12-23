@@ -42,7 +42,7 @@ type ExtendedChatRoom = ChatRoom & {
   messages?: ExtendedMessage[];
   profile_picture?: string | null;
   // Add missing fields from WebSocket
-  other_user?: string; // From WebSocket
+  other_user_name?: string; // From WebSocket
   other_user_avatar?: string | null;
   unread?: number; // From WebSocket (not total_unread)
 };
@@ -90,7 +90,8 @@ export default function ChatRoomsPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const [replyingTo, setReplyingTo] = useState<ExtendedMessage | null>(null);
-  const user = JSON.parse(localStorage.getItem("user"));
+  const userStr = localStorage.getItem("user");
+  const user = userStr ? JSON.parse(userStr) : null;
 
   // Function to handle reply to a specific message
   const handleReplyToMessage = (message: ExtendedMessage) => {
@@ -681,7 +682,7 @@ export default function ChatRoomsPage() {
       filtered = filtered.filter(
         (room) =>
           room.name.toLowerCase().includes(term) ||
-          room.other_user?.toLowerCase().includes(term) || // Search by other_user
+          room.other_user_name?.toLowerCase().includes(term) || // Search by other_user
           room.members?.some((member) => {
             if (typeof member === "object") {
               return (
@@ -762,9 +763,8 @@ export default function ChatRoomsPage() {
   };
 
   const getRoomDisplayName = (room: ExtendedChatRoom) => {
-    // Use other_user from WebSocket (your data shows "other_user": "Daniel AGBLO")
-    if (room.other_user) {
-      return room.other_user;
+    if (room?.other_user_name) {
+      return room?.other_user_name;
     }
 
     // Fallback to room name
