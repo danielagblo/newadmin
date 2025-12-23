@@ -7,19 +7,32 @@ import { Modal } from "@/components/ui/Modal";
 import { chatRoomsApi, messagesApi } from "@/lib/api/chats";
 import { usersApi } from "@/lib/api/users";
 import { ChatRoom, Message, User } from "@/lib/types";
-import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import {
-  Check,
+  Search,
+  Plus,
   ChevronLeft,
+  MessageSquare,
+  Users,
+  Mic,
+  Image as ImageIcon,
+  Send,
+  X,
+  Check,
+  RefreshCw,
+  User as UserIcon,
+  Lock,
+  Unlock,
+  Video,
   File,
   Reply,
   MessageCircle,
   AlertCircle,
   UserCheck,
 } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import useWsChat from "@/lib/hooks/useWsChat";
-import { useEffect, useRef, useState } from "react";
 
 // Extended types to handle missing properties
 type ExtendedChatRoom = ChatRoom & {
@@ -293,39 +306,34 @@ export default function ChatRoomsPage() {
 
   const handleCreateCase = async (user: ExtendedUser) => {
     try {
-      // Prefer backend chatroomid endpoint which returns/creates a room for the given email
-      let newRoom: any = null;
-      try {
-        if (user.email) {
-          newRoom = await chatRoomsApi.getByEmail(user.email);
-        }
-      } catch (err) {
-        console.warn(
-          "chatroomid endpoint failed, falling back to create:",
-          err
-        );
-      }
+      // Create a new chat room for the selected user
+      const roomId =
+        typeof crypto !== "undefined" &&
+        typeof (crypto as any).randomUUID === "function"
+          ? (crypto as any).randomUUID()
+          : undefined;
 
-      if (!newRoom) {
-        const roomPayload: any = {
-          name: `${user.name} - Support Case`,
-          email: user?.email,
-          is_group: false,
-          members: [user.id],
-        };
+      const roomPayload: any = {
+        name: `${user.name} - Support Case`,
+        email: user?.email,
+        is_group: false,
+        members: [user.id],
+      };
 
-        newRoom = await chatRoomsApi.create(roomPayload);
-      }
+      if (roomId) roomPayload.room_id = roomId;
 
-      // Add the returned room to the chat rooms list
+      // Create the chat room via API
+      const newRoom = await chatRoomsApi.create(roomPayload);
+
+      // Add the new room to the chat rooms list
       const extendedRoom: ExtendedChatRoom = {
         ...newRoom,
-        status: newRoom?.status || "open",
-        last_message: newRoom?.last_message || "Case opened by support agent.",
-        updated_at: newRoom?.updated_at || new Date().toISOString(),
+        status: "open",
+        last_message: "Case opened by support agent.",
+        updated_at: new Date().toISOString(),
         messages: [],
         profile_picture: user.profile_picture,
-        members: newRoom?.members || [user],
+        members: [user],
       };
 
       console.log("Current Room: ", extendedRoom);
