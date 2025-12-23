@@ -2,19 +2,19 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['localhost', '127.0.0.1'],
     remotePatterns: [
       {
-        protocol: 'http',
-        hostname: '**',
+        protocol: "https",
+        hostname: "api.oysloe.com",
+        pathname: "/**",
       },
       {
-        protocol: 'https',
-        hostname: '**',
+        protocol: "http",
+        hostname: "localhost",
+        pathname: "/**",
       },
     ],
   },
-}
+};
 
-module.exports = nextConfig
-
+module.exports = nextConfig;

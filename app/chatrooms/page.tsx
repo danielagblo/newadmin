@@ -90,6 +90,7 @@ export default function ChatRoomsPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const [replyingTo, setReplyingTo] = useState<ExtendedMessage | null>(null);
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   // Function to handle reply to a specific message
   const handleReplyToMessage = (message: ExtendedMessage) => {
@@ -323,7 +324,7 @@ export default function ChatRoomsPage() {
       if (roomId) roomPayload.room_id = roomId;
 
       // Create the chat room via API
-      const newRoom = await chatRoomsApi.create(roomPayload);
+      const newRoom = await chatRoomsApi.getByEmail(roomPayload?.email);
 
       // Add the new room to the chat rooms list
       const extendedRoom: ExtendedChatRoom = {
@@ -918,7 +919,7 @@ export default function ChatRoomsPage() {
 
                   return (
                     <div
-                      key={room.id}
+                      key={room?.chatroom_id}
                       className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
                         isActive ? "bg-blue-50" : ""
                       } ${isClosed ? "opacity-75" : ""}`}
@@ -935,7 +936,12 @@ export default function ChatRoomsPage() {
                             {avatarInfo.type === "image" ? (
                               <div className="relative w-full h-full">
                                 <Image
-                                  src={avatarInfo.url}
+                                  src={
+                                    avatarInfo.url?.replace(
+                                      "wss://",
+                                      "https://"
+                                    ) || ""
+                                  }
                                   alt={displayName}
                                   fill
                                   className="rounded-full object-cover"
@@ -1215,8 +1221,8 @@ export default function ChatRoomsPage() {
                         {group.messages.map((message) => {
                           const isSystemMessage = message.sender?.id === 0;
                           const isStaffOrAdmin =
-                            message?.sender?.is_staff ||
-                            message?.sender?.is_superuser;
+                            message?.sender?.name === user?.name;
+                          console.log("current user", typeof user);
                           const senderAvatar = message.sender?.profile_picture;
                           const senderInitial =
                             message.sender?.name?.charAt(0)?.toUpperCase() ||
@@ -1242,7 +1248,10 @@ export default function ChatRoomsPage() {
                                     {senderAvatar ? (
                                       <div className="relative w-full h-full">
                                         <Image
-                                          src={senderAvatar}
+                                          src={senderAvatar?.replace(
+                                            "wss://",
+                                            "https://"
+                                          )}
                                           alt={message.sender?.name || "User"}
                                           fill
                                           className="object-cover"
@@ -1632,7 +1641,10 @@ export default function ChatRoomsPage() {
                       {user.profile_picture ? (
                         <div className="relative w-full h-full">
                           <Image
-                            src={user.profile_picture}
+                            src={user.profile_picture?.replace(
+                              "wss://",
+                              "https://"
+                            )}
                             alt={user.name || "User"}
                             fill
                             className="object-cover"
