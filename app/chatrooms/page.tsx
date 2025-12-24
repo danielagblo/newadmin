@@ -848,11 +848,44 @@ export default function ChatRoomsPage() {
   };
 
   const getLastMessage = (room: ExtendedChatRoom) => {
+    // If last_message is an object
     if (room.last_message && typeof room.last_message === "object") {
       const lastMsg = room.last_message as any;
-      return lastMsg.text || "No messages yet";
+      const text = lastMsg.text || "";
+
+      // Check if text contains data URLs
+      if (text.includes("data:image/")) {
+        return "📷 Image";
+      }
+      if (text.includes("data:audio/")) {
+        return "🎵 Audio";
+      }
+      if (text.includes("data:video/")) {
+        return "🎥 Video";
+      }
+
+      return text || "No messages yet";
     }
-    return (room.last_message as string) || "No messages yet";
+
+    // If last_message is a string
+    if (typeof room.last_message === "string") {
+      const lastMsg = room.last_message;
+
+      if (lastMsg.includes("data:image/")) {
+        return "📷 Image";
+      }
+      if (lastMsg.includes("data:audio/")) {
+        return "🎵 Audio";
+      }
+      if (lastMsg.includes("data:video/")) {
+        return "🎥 Video";
+      }
+
+      return lastMsg || "No messages yet";
+    }
+
+    // Default fallback
+    return "No messages yet";
   };
 
   const getAvatarForRoom = (room: ExtendedChatRoom) => {
@@ -1166,7 +1199,22 @@ export default function ChatRoomsPage() {
                             : "bg-blue-100"
                         }`}
                       >
-                        {selectedRoom.is_group ? (
+                        {selectedRoom.other_user_avatar ? (
+                          <div className="relative w-full h-full">
+                            <Image
+                              src={
+                                selectedRoom.other_user_avatar?.replace(
+                                  "wss://",
+                                  "https://"
+                                ) || ""
+                              }
+                              alt={getRoomDisplayName(selectedRoom)}
+                              fill
+                              className="rounded-full object-cover"
+                              sizes="40px"
+                            />
+                          </div>
+                        ) : selectedRoom.is_group ? (
                           <Users
                             className={`h-5 w-5 ${
                               selectedRoom.status === "closed"
@@ -1325,7 +1373,7 @@ export default function ChatRoomsPage() {
                           const isSystemMessage = message.sender?.id === 0;
                           const isStaffOrAdmin =
                             message.sender?.email === user?.email;
-                          const senderAvatar = message.sender?.profile_picture;
+                          const senderAvatar = selectedRoom.other_user_avatar;
                           const senderInitial =
                             message.sender?.name?.charAt(0)?.toUpperCase() ||
                             "U";
@@ -1344,7 +1392,7 @@ export default function ChatRoomsPage() {
                                 isStaffOrAdmin ? "justify-end" : ""
                               } ${isSystemMessage ? "justify-start" : ""}`}
                             >
-                              {!isStaffOrAdmin && !isSystemMessage && (
+                              {!isStaffOrAdmin && (
                                 <div className="flex-shrink-0">
                                   <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                                     {senderAvatar ? (
@@ -1369,11 +1417,7 @@ export default function ChatRoomsPage() {
                                 </div>
                               )}
 
-                              <div
-                                className={`${
-                                  isSystemMessage ? "max-w-full" : "max-w-[70%]"
-                                }`}
-                              >
+                              <div className={`${"max-w-[70%]"}`}>
                                 {!isStaffOrAdmin && !isSystemMessage && (
                                   <div className="flex items-center gap-2 mb-1">
                                     <p className="text-xs font-medium text-gray-700">
@@ -1400,61 +1444,132 @@ export default function ChatRoomsPage() {
                                       : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
                                   }`}
                                 >
-                                  {message.content && (
-                                    <p className="whitespace-pre-wrap mb-2">
-                                      {message.content}
-                                    </p>
-                                  )}
+                                  {message.content &&
+                                    (() => {
+                                      const content = message.content;
 
-                                  {message.attachments &&
-                                    message.attachments.map((attachment) => {
-                                      const FileIcon = getFileIcon(
-                                        attachment.file_type
-                                      );
-                                      return (
-                                        <div
-                                          key={attachment.id}
-                                          className="mt-2 first:mt-0"
-                                        >
-                                          {attachment.file_type === "image" && (
+                                      // Handle image data URLs - FIXED: Maintain aspect ratio
+                                      if (content.includes("data:image/")) {
+                                        return (
+                                          <div className="mt-2 first:mt-0">
                                             <div className="relative group">
-                                              <a
-                                                href={attachment.file_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block"
+                                              <div
+                                                className="relative rounded-lg overflow-hidden border border-gray-200 max-w-full cursor-pointer"
+                                                onClick={() => {
+                                                  // This actually works for viewing in new tab!
+                                                  const newTab = window.open(
+                                                    "",
+                                                    "_blank"
+                                                  );
+                                                  if (newTab) {
+                                                    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Image</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            background: #1a1a1a; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh;
+            padding: 20px;
+          }
+          img { 
+            max-width: 100%; 
+            max-height: 95vh; 
+            object-fit: contain; 
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          }
+        </style>
+      </head>
+      <body>
+        <img src="${content}" alt="Image" />
+      </body>
+      </html>
+    `;
+
+                                                    newTab.document.open();
+                                                    newTab.document.write(html);
+                                                    newTab.document.close();
+                                                  }
+                                                }}
                                               >
-                                                <div className="relative w-full max-w-md h-48 md:h-64 rounded-lg overflow-hidden border border-gray-200">
-                                                  <Image
-                                                    src={attachment.file_url}
-                                                    alt={
-                                                      attachment.file_name ||
-                                                      "Image"
-                                                    }
-                                                    fill
-                                                    className="object-cover hover:scale-105 transition-transform duration-200"
-                                                    sizes="(max-width: 768px) 100vw, 50vw"
+                                                {/* Remove fixed width/height, let image determine size */}
+                                                <div className="relative rounded-lg overflow-hidden border border-gray-200 max-w-full">
+                                                  {/* Use regular img tag for data URLs or Next Image without fill */}
+                                                  <img
+                                                    src={content}
+                                                    alt="Uploaded image"
+                                                    className="w-auto h-auto max-h-[400px] max-w-full object-contain hover:scale-105 transition-transform duration-200"
+                                                    style={{
+                                                      maxWidth: "100%",
+                                                      height: "auto",
+                                                    }}
+                                                    onLoad={(e) => {
+                                                      // Optional: Log image dimensions for debugging
+                                                      console.log(
+                                                        "Image loaded:",
+                                                        e.currentTarget
+                                                          .naturalWidth,
+                                                        "x",
+                                                        e.currentTarget
+                                                          .naturalHeight
+                                                      );
+                                                    }}
                                                   />
                                                 </div>
-                                              </a>
-                                              {attachment.file_name && (
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                  {attachment.file_name}
-                                                </p>
-                                              )}
+                                              </div>
                                             </div>
-                                          )}
-                                          {attachment.file_type === "video" && (
+                                          </div>
+                                        );
+                                      }
+
+                                      // Handle audio data URLs - FIXED: Make audio player wider
+                                      if (content.includes("data:audio/")) {
+                                        return (
+                                          <div className="mt-2 first:mt-0 w-full">
+                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 w-full min-w-[300px]">
+                                              <div className="flex items-center gap-3 mb-2">
+                                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                                  <Mic className="h-5 w-5 text-blue-600" />
+                                                </div>
+                                                <div className="flex-1">
+                                                  <p className="text-sm font-medium text-gray-900">
+                                                    Voice message
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              {/* Audio player takes full width with proper controls */}
+                                              <audio
+                                                controls
+                                                src={content}
+                                                className="w-full"
+                                                style={{ minWidth: "250px" }}
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+
+                                      // Handle video data URLs
+                                      if (content.includes("data:video/")) {
+                                        return (
+                                          <div className="mt-2 first:mt-0">
                                             <div className="relative group">
                                               <a
-                                                href={attachment.file_url}
+                                                href={content}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="block"
                                               >
-                                                <div className="relative w-full max-w-md h-48 md:h-64 rounded-lg overflow-hidden border border-gray-200 bg-black">
+                                                {/* Video with aspect ratio */}
+                                                <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-black max-w-full aspect-video">
                                                   <video
-                                                    src={attachment.file_url}
+                                                    src={content}
                                                     className="w-full h-full object-contain"
                                                     controls
                                                     preload="metadata"
@@ -1466,79 +1581,18 @@ export default function ChatRoomsPage() {
                                                   </div>
                                                 </div>
                                               </a>
-                                              {attachment.file_name && (
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                  {attachment.file_name}
-                                                </p>
-                                              )}
                                             </div>
-                                          )}
-                                          {attachment.file_type === "audio" && (
-                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                              <div className="flex items-center gap-3 mb-2">
-                                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                                  <FileIcon className="h-5 w-5 text-blue-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                  <p className="text-sm font-medium text-gray-900">
-                                                    {attachment.file_name ||
-                                                      "Voice message"}
-                                                  </p>
-                                                  {attachment.file_size && (
-                                                    <p className="text-xs text-gray-500">
-                                                      {(
-                                                        attachment.file_size /
-                                                        1024 /
-                                                        1024
-                                                      ).toFixed(2)}{" "}
-                                                      MB
-                                                    </p>
-                                                  )}
-                                                </div>
-                                              </div>
-                                              <audio
-                                                controls
-                                                src={attachment.file_url}
-                                                className="w-full"
-                                              />
-                                            </div>
-                                          )}
-                                          {attachment.file_type ===
-                                            "document" && (
-                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                              <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                                  <FileIcon className="h-5 w-5 text-gray-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                  <p className="text-sm font-medium text-gray-900">
-                                                    {attachment.file_name ||
-                                                      "Document"}
-                                                  </p>
-                                                  {attachment.file_size && (
-                                                    <p className="text-xs text-gray-500">
-                                                      {(
-                                                        attachment.file_size /
-                                                        1024
-                                                      ).toFixed(2)}{" "}
-                                                      KB
-                                                    </p>
-                                                  )}
-                                                </div>
-                                                <a
-                                                  href={attachment.file_url}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-blue-600 hover:text-blue-800"
-                                                >
-                                                  <File className="h-5 w-5" />
-                                                </a>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
+                                          </div>
+                                        );
+                                      }
+
+                                      // Regular text content
+                                      return (
+                                        <p className="whitespace-pre-wrap mb-2">
+                                          {content}
+                                        </p>
                                       );
-                                    })}
+                                    })()}
 
                                   {!isSystemMessage && (
                                     <div className="flex items-center justify-end gap-2 mt-2">
