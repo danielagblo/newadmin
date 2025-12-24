@@ -30,7 +30,13 @@ import {
   AlertCircle,
   UserCheck,
 } from "lucide-react";
-import React, { useEffect, useState, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import Image from "next/image";
 import useWsChat from "@/lib/hooks/useWsChat";
 
@@ -93,6 +99,10 @@ export default function ChatRoomsPage() {
   const [filterOption, setFilterOption] = useState("All");
   const [openFilter, setOpenFilter] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [isSwitchingRoom, setIsSwitchingRoom] = useState(false);
+  const [lastSelectedRoomId, setLastSelectedRoomId] = useState<number | null>(
+    null
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +113,9 @@ export default function ChatRoomsPage() {
     typeof window !== "undefined"
       ? JSON.parse(localStorage.getItem("user") || "null")
       : null;
+
+  // Store a ref to track if we're currently switching rooms
+  const switchingRoomRef = useRef(false);
 
   const handleReplyToMessage = (message: ExtendedMessage) => {
     setReplyingTo(message);
@@ -228,6 +241,18 @@ export default function ChatRoomsPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Use a ref to store the latest messages for WebSocket comparison
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Use a ref to store the latest selected room
+  const selectedRoomRef = useRef(selectedRoom);
+  useEffect(() => {
+    selectedRoomRef.current = selectedRoom;
+  }, [selectedRoom]);
+
   useEffect(() => {
     try {
       if (Array.isArray(ws.chatrooms)) {
@@ -244,16 +269,32 @@ export default function ChatRoomsPage() {
     } catch {}
   }, [ws.chatrooms]);
 
-  // Fixed: Single useEffect for message syncing
+  // Fixed: Debounced message syncing with room check
   useEffect(() => {
-    try {
-      if (!selectedRoom) return;
+    if (!selectedRoom || switchingRoomRef.current) return;
 
-      const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
+    const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
 
-      if (ws.messages[key]) {
-        const wsMessages = ws.messages[key];
+    // Only sync if we have messages for this room
+    if (ws.messages[key] && Array.isArray(ws.messages[key])) {
+      const wsMessages = ws.messages[key];
 
+      // Prevent unnecessary updates by comparing message counts
+      const currentMessages = messagesRef.current;
+      const currentRoomMessages = currentMessages.filter(
+        (msg) => String(msg.room) === String(selectedRoom.id)
+      );
+
+      if (wsMessages.length === 0 && currentRoomMessages.length === 0) {
+        return; // No messages to sync
+      }
+
+      // Only update if there are actual changes
+      if (
+        wsMessages.length !== currentRoomMessages.length ||
+        (wsMessages.length > 0 && currentRoomMessages.length === 0)
+      ) {
+        setLoadingMessages(true);
         const formattedMessages: ExtendedMessage[] = wsMessages.map(
           (msg: any) => {
             let senderInfo: MessageSender = {
@@ -297,6 +338,7 @@ export default function ChatRoomsPage() {
           }
         );
 
+        // Set messages and mark as read
         setMessages(formattedMessages);
 
         if (formattedMessages.length > 0) {
@@ -306,31 +348,36 @@ export default function ChatRoomsPage() {
             [selectedRoom.id]: 0,
           }));
         }
+
+        setLoadingMessages(false);
       }
-    } catch (error) {
-      console.error("Error syncing messages:", error);
     }
   }, [selectedRoom, ws.messages, user, ws.markAsRead, ws]);
 
-  // Add polling for real-time updates
+  // Add polling for real-time updates - FIXED: Only connect if not already connected
   useEffect(() => {
     if (!selectedRoom) return;
 
     const interval = setInterval(() => {
-      if (selectedRoom) {
+      if (selectedRoom && !switchingRoomRef.current) {
         const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
         try {
-          ws.connectToRoom(key);
+          // Only connect if not already connected
+          if (!ws.isRoomConnected(key)) {
+            ws.connectToRoom(key);
+          }
         } catch {}
       }
-    }, 5000);
+    }, 10000); // Increased to 10 seconds to reduce frequency
 
     return () => clearInterval(interval);
   }, [selectedRoom, ws.connectToRoom, ws]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current && !switchingRoomRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -346,6 +393,11 @@ export default function ChatRoomsPage() {
 
   const handleCreateCase = async (selectedUser: ExtendedUser) => {
     try {
+      // Clear current messages
+      setMessages([]);
+      setReplyingTo(null);
+      switchingRoomRef.current = true;
+
       const roomPayload: any = {
         name: `${selectedUser.name} - Support Case`,
         email: selectedUser?.email,
@@ -382,6 +434,7 @@ export default function ChatRoomsPage() {
 
       // Immediately select the new room
       setSelectedRoom(extendedRoom);
+      setLastSelectedRoomId(extendedRoom.id);
 
       // Connect to the room via WebSocket
       const roomKey = String(extendedRoom.room_id ?? extendedRoom.id ?? "");
@@ -408,6 +461,7 @@ export default function ChatRoomsPage() {
 
       setMessages([systemMessage]);
       setIsUsersModalOpen(false);
+      switchingRoomRef.current = false;
 
       // Also manually refresh chatrooms list to ensure WebSocket picks it up
       setTimeout(() => {
@@ -418,23 +472,53 @@ export default function ChatRoomsPage() {
     } catch (error: any) {
       console.error("Error creating case:", error);
       alert(error.response?.data?.detail || "Failed to create case");
+      switchingRoomRef.current = false;
     }
   };
 
-  const handleSelectRoom = async (room: ExtendedChatRoom) => {
-    setSelectedRoom(room);
-    try {
-      const key = String(room.room_id ?? room.id ?? "");
-      await ws.connectToRoom(key);
-      await ws.markAsRead(key);
-      setUnreadCounts((prev) => ({
-        ...prev,
-        [room.id]: 0,
-      }));
-    } catch (e) {
-      console.error("Failed to connect to room via websocket", e);
-    }
-  };
+  const handleSelectRoom = useCallback(
+    async (room: ExtendedChatRoom) => {
+      if (selectedRoom?.id === room.id || switchingRoomRef.current) return;
+
+      setIsSwitchingRoom(true);
+      switchingRoomRef.current = true;
+      setLoadingMessages(true);
+
+      try {
+        // Clear previous messages immediately for UI responsiveness
+        setMessages([]);
+        setReplyingTo(null);
+
+        // Set new room
+        setSelectedRoom(room);
+        setLastSelectedRoomId(room.id);
+
+        // Get the room key
+        const key = String(room.room_id ?? room.id ?? "");
+
+        // Connect to the room via WebSocket
+        try {
+          await ws.connectToRoom(key);
+          await ws.markAsRead(key);
+        } catch (e) {
+          console.error("Failed to connect to room via websocket", e);
+        }
+
+        // Update unread counts
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [room.id]: 0,
+        }));
+      } finally {
+        setTimeout(() => {
+          setIsSwitchingRoom(false);
+          switchingRoomRef.current = false;
+          setLoadingMessages(false);
+        }, 300);
+      }
+    },
+    [selectedRoom, ws]
+  );
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRoom || selectedRoom.status === "closed")
@@ -709,7 +793,7 @@ export default function ChatRoomsPage() {
     }
   };
 
-  const groupMessagesByDate = (messages: ExtendedMessage[]) => {
+  const groupMessagesByDate = useCallback((messages: ExtendedMessage[]) => {
     const groups: { [key: string]: ExtendedMessage[] } = {};
     messages.forEach((message) => {
       const dateLabel = getDateLabel(message.created_at);
@@ -722,9 +806,9 @@ export default function ChatRoomsPage() {
       label,
       messages: msgs,
     }));
-  };
+  }, []);
 
-  const getFilteredChatRooms = () => {
+  const getFilteredChatRooms = useCallback(() => {
     let filtered = [...chatRooms];
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
@@ -757,7 +841,7 @@ export default function ChatRoomsPage() {
       );
     }
     return filtered;
-  };
+  }, [chatRooms, searchTerm, filterOption]);
 
   const getUnreadCount = (roomId: number) => {
     return unreadCounts[roomId] || 0;
@@ -828,6 +912,18 @@ export default function ChatRoomsPage() {
         return File;
     }
   };
+
+  // Memoize filtered chat rooms
+  const filteredChatRooms = useMemo(
+    () => getFilteredChatRooms(),
+    [getFilteredChatRooms]
+  );
+
+  // Memoize grouped messages
+  const groupedMessages = useMemo(
+    () => groupMessagesByDate(messages),
+    [messages, groupMessagesByDate]
+  );
 
   return (
     <Layout>
@@ -925,7 +1021,7 @@ export default function ChatRoomsPage() {
               </div>
             ) : error ? (
               <div className="p-4 text-center text-red-600">{error}</div>
-            ) : getFilteredChatRooms().length === 0 ? (
+            ) : filteredChatRooms.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
                 {searchTerm
                   ? "No chat rooms found matching your search"
@@ -933,106 +1029,98 @@ export default function ChatRoomsPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {getFilteredChatRooms()
-                  ?.reverse()
-                  .map((room) => {
-                    const isActive = selectedRoom?.id === room.id;
-                    const isClosed = room.status === "closed";
-                    const unreadCount = getUnreadCount(room.id);
-                    const avatarInfo = getAvatarForRoom(room);
-                    const displayName = getRoomDisplayName(room);
-                    const updatedTime = getRoomUpdatedTime(room);
+                {filteredChatRooms?.reverse().map((room) => {
+                  const isActive = selectedRoom?.id === room.id;
+                  const isClosed = room.status === "closed";
+                  const unreadCount = getUnreadCount(room.id);
+                  const avatarInfo = getAvatarForRoom(room);
+                  const displayName = getRoomDisplayName(room);
+                  const updatedTime = getRoomUpdatedTime(room);
 
-                    return (
-                      <div
-                        key={room?.id || room?.room_id}
-                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                          isActive ? "bg-blue-50" : ""
-                        } ${isClosed ? "opacity-75" : ""}`}
-                        onClick={() => handleSelectRoom(room)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="relative flex-shrink-0">
-                            <div
-                              className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                                isClosed ? "bg-gray-100" : "bg-blue-100"
-                              }`}
-                            >
-                              {avatarInfo.type === "image" ? (
-                                <div className="relative w-full h-full">
-                                  <Image
-                                    src={
-                                      avatarInfo.url?.replace(
-                                        "wss://",
-                                        "https://"
-                                      ) || ""
-                                    }
-                                    alt={displayName}
-                                    fill
-                                    className="rounded-full object-cover"
-                                    sizes="48px"
-                                  />
-                                </div>
-                              ) : (
-                                <avatarInfo.icon
-                                  className={`h-6 w-6 ${
-                                    isClosed ? "text-gray-400" : "text-blue-600"
-                                  }`}
+                  return (
+                    <div
+                      key={room?.id || room?.room_id}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        isActive ? "bg-blue-50" : ""
+                      } ${isClosed ? "opacity-75" : ""}`}
+                      onClick={() => handleSelectRoom(room)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative flex-shrink-0">
+                          <div
+                            className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                              isClosed ? "bg-gray-100" : "bg-blue-100"
+                            }`}
+                          >
+                            {avatarInfo.type === "image" ? (
+                              <div className="relative w-full h-full">
+                                <Image
+                                  src={
+                                    avatarInfo.url?.replace(
+                                      "wss://",
+                                      "https://"
+                                    ) || ""
+                                  }
+                                  alt={displayName}
+                                  fill
+                                  className="rounded-full object-cover"
+                                  sizes="48px"
                                 />
+                              </div>
+                            ) : (
+                              <avatarInfo.icon
+                                className={`h-6 w-6 ${
+                                  isClosed ? "text-gray-400" : "text-blue-600"
+                                }`}
+                              />
+                            )}
+                          </div>
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                              {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-900 truncate">
+                                {displayName}
+                              </h3>
+                              {isClosed && (
+                                <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
+                                  Closed
+                                </span>
                               )}
                             </div>
+                          </div>
+
+                          <p className="text-sm text-gray-600 truncate mt-1">
+                            {getLastMessage(room)}
+                          </p>
+
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            {formatTimeDistance(updatedTime)}
+                          </span>
+
+                          <div className="flex items-center gap-2 mt-1">
                             {unreadCount > 0 && (
-                              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                                {unreadCount > 9 ? "9+" : unreadCount}
+                              <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                                {unreadCount} unread
+                              </span>
+                            )}
+                            {room.is_group && (
+                              <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-800 rounded-full">
+                                {room.members?.length || 0} members
                               </span>
                             )}
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-gray-900 truncate">
-                                  {displayName}
-                                </h3>
-                                {isClosed && (
-                                  <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
-                                    Closed
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-xs text-gray-500 whitespace-nowrap">
-                                {formatTimeDistance(updatedTime)}
-                              </span>
-                            </div>
-
-                            <p className="text-sm text-gray-600 truncate mt-1">
-                              {getLastMessage(room)}
-                            </p>
-
-                            {room.last_message &&
-                              typeof room.last_message === "object" && (
-                                <p className="text-xs text-gray-500 truncate">
-                                  From: {(room.last_message as any).sender}
-                                </p>
-                              )}
-
-                            <div className="flex items-center gap-2 mt-1">
-                              {unreadCount > 0 && (
-                                <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
-                                  {unreadCount} unread
-                                </span>
-                              )}
-                              {room.is_group && (
-                                <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-800 rounded-full">
-                                  {room.members?.length || 0} members
-                                </span>
-                              )}
-                            </div>
-                          </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1173,7 +1261,7 @@ export default function ChatRoomsPage() {
               </div>
 
               <div className="flex-1 overflow-hidden flex flex-col">
-                {loadingMessages ? (
+                {isSwitchingRoom || loadingMessages ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
@@ -1225,7 +1313,7 @@ export default function ChatRoomsPage() {
                       </div>
                     )}
 
-                    {groupMessagesByDate(messages).map((group) => (
+                    {groupedMessages.map((group) => (
                       <div key={group.label} className="mb-6">
                         <div className="flex items-center justify-center my-4">
                           <div className="px-4 py-1 bg-gray-100 rounded-full text-sm text-gray-600">

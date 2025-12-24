@@ -267,6 +267,7 @@ export default function useWsChat(): UseWsChatReturn {
       }
     ) => {
       let key = normalizeRoomId(roomId);
+
       // If we didn't find a room_id in local `chatrooms` and the provided id
       // looks like a numeric primary key, try to resolve using local WS cache
       // (in-memory chatrooms or the WS-backed localStorage cache). We avoid
@@ -632,7 +633,7 @@ export default function useWsChat(): UseWsChatReturn {
 
       return key;
     },
-    [token]
+    [token, chatrooms]
   );
 
   const connectToRoom = useCallback(
