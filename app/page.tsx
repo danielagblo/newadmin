@@ -8,7 +8,7 @@ import { paymentsApi } from '@/lib/api/payments';
 import { productsApi } from '@/lib/api/products';
 import { usersApi } from '@/lib/api/users';
 import { useAuthStore } from '@/lib/store/auth';
-import { ChatRoom, Payment, Product, User, PaginatedResponse } from '@/lib/types';
+import { ChatRoom, PaginatedResponse, Payment, Product, User } from '@/lib/types';
 import {
   AlertCircle,
   Bell, CreditCard,
@@ -58,10 +58,10 @@ export default function Dashboard() {
   const [userVerificationData, setUserVerificationData] = useState<any[]>([]);
   const [productStatusData, setProductStatusData] = useState<any[]>([]);
   const [userGrowthData, setUserGrowthData] = useState<any[]>([]);
-  const [chatroomTypeData, setChatroomTypeData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [userActivityData, setUserActivityData] = useState<any[]>([]);
   const [paymentStatusData, setPaymentStatusData] = useState<any[]>([]);
+  const [chatActivityData, setChatActivityData] = useState<any[]>([]);
 
   useEffect(() => {
     const apiUrlValue = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -122,7 +122,7 @@ export default function Dashboard() {
                 // Handle both array and paginated responses
                 let pageProducts: Product[] = [];
                 let pageHasMore = false;
-                
+
                 if (Array.isArray(nextPage)) {
                   pageProducts = nextPage;
                   pageHasMore = false; // If array response, no more pages
@@ -130,7 +130,7 @@ export default function Dashboard() {
                   pageProducts = nextPage.results || [];
                   pageHasMore = !!nextPage.next;
                 }
-                
+
                 if (pageProducts.length > 0) {
                   allProducts.push(...pageProducts);
                   hasMore = pageHasMore;
@@ -235,13 +235,49 @@ export default function Dashboard() {
         });
         setUserGrowthData(monthsData);
 
-        // Chatroom Type Distribution
-        const groupChats = chatRoomsArray.filter((r: ChatRoom) => r.is_group).length;
-        const directChats = chatRoomsArray.length - groupChats;
-        setChatroomTypeData([
-          { name: 'Group Chats', value: groupChats, color: '#3b82f6' },
-          { name: 'Direct Chats', value: directChats, color: '#10b981' },
-        ]);
+        // Chat Activity for Top Chatroom (messages per day, last 14 days)
+        try {
+          if (chatRoomsArray.length > 0) {
+            // pick top room by messages length if available, otherwise first
+            let topRoom: ChatRoom | null = null;
+            if (chatRoomsArray.some((r: any) => Array.isArray(r.messages) && r.messages.length > 0)) {
+              topRoom = chatRoomsArray.reduce((best: ChatRoom | null, r: ChatRoom) => {
+                const len = Array.isArray((r as any).messages) ? (r as any).messages.length : 0;
+                if (!best) return r;
+                const bestLen = Array.isArray((best as any).messages) ? (best as any).messages.length : 0;
+                return len > bestLen ? r : best;
+              }, null as any);
+            } else {
+              topRoom = chatRoomsArray[0];
+            }
+
+            if (topRoom) {
+              const msgs = await chatRoomsApi.getMessages(topRoom.id).catch(() => []);
+              const days = 14;
+              const now = new Date();
+              const buckets: { date: string; count: number }[] = [];
+              for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+                const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                buckets.push({ date: label, count: 0 });
+              }
+              (msgs || []).forEach((m: any) => {
+                try {
+                  const md = new Date(m.created_at);
+                  const label = md.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const b = buckets.find((x) => x.date === label);
+                  if (b) b.count += 1;
+                } catch {
+                  // ignore
+                }
+              });
+              setChatActivityData(buckets.map((b) => ({ day: b.date, messages: b.count })));
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching chat activity', err);
+          setChatActivityData([]);
+        }
 
         // Top Categories by Product Count
         const categoryCounts: Record<string, number> = {};
@@ -402,6 +438,20 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
 
+              {/* Chat Activity (Top Chatroom) */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Chat Activity (Top Chatroom)</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={chatActivityData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="day" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="messages" stroke="#6366f1" strokeWidth={2} name="Messages" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
               {/* User Level Distribution */}
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">User Level Distribution</h3>
@@ -505,30 +555,6 @@ export default function Dashboard() {
                     >
                       {paymentStatusData.map((entry, index) => (
                         <Cell key={`cell-pay-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Chatroom Type Distribution */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Chatroom Types</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={chatroomTypeData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {chatroomTypeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
                     <Tooltip />

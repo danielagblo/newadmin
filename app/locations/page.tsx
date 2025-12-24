@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { locationsApi } from '@/lib/api/locations';
 import { Location, REGIONS } from '@/lib/types';
 import { format } from 'date-fns';
-import { Plus, ChevronDown, ChevronRight, Edit, Trash2, MapPin } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit, MapPin, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -32,14 +32,14 @@ export default function LocationsPage() {
     console.log('=== GROUPING LOCATIONS BY REGION ===');
     console.log(`Total locations to group: ${locations.length}`);
     console.log('Available REGIONS:', REGIONS);
-    
+
     const grouped: Record<string, Location[]> = {};
     REGIONS.forEach(region => {
       grouped[region] = [];
     });
     // Also track locations with unknown regions
     const unknownRegion: Location[] = [];
-    
+
     locations.forEach((location, idx) => {
       console.log(`[${idx + 1}] Processing location:`, {
         id: location.id,
@@ -47,7 +47,7 @@ export default function LocationsPage() {
         region: location.region,
         regionType: typeof location.region,
       });
-      
+
       if (location.region) {
         // Try to find exact match first
         if (grouped[location.region]) {
@@ -72,14 +72,14 @@ export default function LocationsPage() {
         unknownRegion.push(location);
       }
     });
-    
+
     // Add unknown region locations to the first region or create a special group
     if (unknownRegion.length > 0) {
       console.warn(`Found ${unknownRegion.length} locations without valid regions:`, unknownRegion.map(l => ({ id: l.id, name: l.name, region: l.region })));
       // Add them to "Greater Accra" as default, or you could create a separate section
       grouped['Greater Accra'] = [...grouped['Greater Accra'], ...unknownRegion];
     }
-    
+
     // Log final grouping
     console.log('=== FINAL GROUPING RESULTS ===');
     Object.keys(grouped).forEach(region => {
@@ -90,7 +90,7 @@ export default function LocationsPage() {
         });
       }
     });
-    
+
     return grouped;
   }, [locations]);
 
@@ -107,7 +107,7 @@ export default function LocationsPage() {
       console.log('Locations fetched successfully:', data);
       console.log(`Total locations received: ${data.length}`);
       setLocations(Array.isArray(data) ? data : []);
-      
+
       // Log region distribution
       const regionCounts: Record<string, number> = {};
       data.forEach(loc => {
@@ -307,11 +307,10 @@ export default function LocationsPage() {
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <h4 className="font-medium text-gray-900">{location.name}</h4>
-                                    <span className={`px-2 py-0.5 rounded text-xs ${
-                                      location.is_active
+                                    <span className={`px-2 py-0.5 rounded text-xs ${location.is_active
                                         ? 'bg-green-100 text-green-800'
                                         : 'bg-red-100 text-red-800'
-                                    }`}>
+                                      }`}>
                                       {location.is_active ? 'Active' : 'Inactive'}
                                     </span>
                                   </div>

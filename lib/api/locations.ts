@@ -1,5 +1,5 @@
-import apiClient from './config';
 import { Location } from '../types';
+import apiClient from './config';
 
 export const locationsApi = {
   list: async (params?: { region?: string; name?: string; search?: string }): Promise<Location[]> => {
