@@ -8,7 +8,7 @@ import { paymentsApi } from '@/lib/api/payments';
 import { productsApi } from '@/lib/api/products';
 import { usersApi } from '@/lib/api/users';
 import { useAuthStore } from '@/lib/store/auth';
-import { ChatRoom, Payment, Product, User, PaginatedResponse } from '@/lib/types';
+import { ChatRoom, PaginatedResponse, Payment, Product, User } from '@/lib/types';
 import {
   AlertCircle,
   Bell, CreditCard,
@@ -122,7 +122,7 @@ export default function Dashboard() {
                 // Handle both array and paginated responses
                 let pageProducts: Product[] = [];
                 let pageHasMore = false;
-                
+
                 if (Array.isArray(nextPage)) {
                   pageProducts = nextPage;
                   pageHasMore = false; // If array response, no more pages
@@ -130,7 +130,7 @@ export default function Dashboard() {
                   pageProducts = nextPage.results || [];
                   pageHasMore = !!nextPage.next;
                 }
-                
+
                 if (pageProducts.length > 0) {
                   allProducts.push(...pageProducts);
                   hasMore = pageHasMore;
