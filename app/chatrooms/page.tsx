@@ -270,89 +270,103 @@ export default function ChatRoomsPage() {
   }, [ws.chatrooms]);
 
   // Fixed: Debounced message syncing with room check
+  // Replace the entire useEffect that syncs messages with this:
   useEffect(() => {
     if (!selectedRoom || switchingRoomRef.current) return;
 
     const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
 
-    // Only sync if we have messages for this room
+    // Always sync when we have WebSocket messages for this room
     if (ws.messages[key] && Array.isArray(ws.messages[key])) {
       const wsMessages = ws.messages[key];
 
-      // Prevent unnecessary updates by comparing message counts
-      const currentMessages = messagesRef.current;
-      const currentRoomMessages = currentMessages.filter(
-        (msg) => String(msg.room) === String(selectedRoom.id)
+      // Don't check for "actual changes" - just update
+      setLoadingMessages(true);
+
+      const formattedMessages: ExtendedMessage[] = wsMessages.map(
+        (msg: any) => {
+          let senderInfo: MessageSender = {
+            id: 0,
+            name: "Unknown",
+            email: null,
+            profile_picture: null,
+          };
+
+          if (typeof msg.sender === "string") {
+            senderInfo.name = msg.sender;
+            senderInfo.email = msg.email || null;
+          } else if (msg.sender && typeof msg.sender === "object") {
+            senderInfo = {
+              ...senderInfo,
+              ...msg.sender,
+            };
+          }
+
+          const isStaffOrAdmin =
+            msg.email === user?.email ||
+            (msg.sender &&
+              typeof msg.sender === "string" &&
+              msg.sender === user?.name);
+
+          return {
+            id: msg.id,
+            content: msg.content,
+            sender: senderInfo,
+            room: selectedRoom.id,
+            chat_room: selectedRoom.id,
+            created_at:
+              msg.created_at || msg.timestamp || new Date().toISOString(),
+            updated_at:
+              msg.updated_at ||
+              msg.created_at ||
+              msg.timestamp ||
+              new Date().toISOString(),
+            is_read: isStaffOrAdmin ? true : msg.is_read || false,
+          } as ExtendedMessage;
+        }
       );
 
-      if (wsMessages.length === 0 && currentRoomMessages.length === 0) {
-        return; // No messages to sync
+      // Set messages immediately
+      setMessages(formattedMessages);
+
+      if (formattedMessages.length > 0) {
+        ws.markAsRead(key);
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [selectedRoom.id]: 0,
+        }));
       }
 
-      // Only update if there are actual changes
-      if (
-        wsMessages.length !== currentRoomMessages.length ||
-        (wsMessages.length > 0 && currentRoomMessages.length === 0)
-      ) {
-        setLoadingMessages(true);
-        const formattedMessages: ExtendedMessage[] = wsMessages.map(
-          (msg: any) => {
-            let senderInfo: MessageSender = {
-              id: 0,
-              name: "Unknown",
-              email: null,
-              profile_picture: null,
-            };
+      setLoadingMessages(false);
+    } else if (ws.messages[key] === undefined) {
+      // No messages yet for this room - try to connect to room
+      const connectRoom = async () => {
+        try {
+          await ws.connectToRoom(key);
 
-            if (typeof msg.sender === "string") {
-              senderInfo.name = msg.sender;
-              senderInfo.email = msg.email || null;
-            } else if (msg.sender && typeof msg.sender === "object") {
-              senderInfo = {
-                ...senderInfo,
-                ...msg.sender,
-              };
+          // Set a timeout to show loading if no messages arrive
+          setTimeout(() => {
+            if (messages.length === 0) {
+              // Still no messages after connection
+              console.log("No messages received after connection attempt");
             }
-
-            const isStaffOrAdmin =
-              msg.email === user?.email ||
-              (msg.sender &&
-                typeof msg.sender === "string" &&
-                msg.sender === user?.name);
-
-            return {
-              id: msg.id,
-              content: msg.content,
-              sender: senderInfo,
-              room: selectedRoom.id,
-              chat_room: selectedRoom.id,
-              created_at:
-                msg.created_at || msg.timestamp || new Date().toISOString(),
-              updated_at:
-                msg.updated_at ||
-                msg.created_at ||
-                msg.timestamp ||
-                new Date().toISOString(),
-              is_read: isStaffOrAdmin ? true : msg.is_read || false,
-            } as ExtendedMessage;
-          }
-        );
-
-        // Set messages and mark as read
-        setMessages(formattedMessages);
-
-        if (formattedMessages.length > 0) {
-          ws.markAsRead(key);
-          setUnreadCounts((prev) => ({
-            ...prev,
-            [selectedRoom.id]: 0,
-          }));
+          }, 3000);
+        } catch (error) {
+          console.error("Failed to connect to room:", error);
         }
+      };
 
-        setLoadingMessages(false);
-      }
+      connectRoom();
     }
-  }, [selectedRoom, ws.messages, user, ws.markAsRead, ws]);
+  }, [
+    selectedRoom,
+    ws.messages,
+    user,
+    ws.markAsRead,
+    ws,
+    ws.connectToRoom,
+    messages.length,
+  ]);
 
   // Add polling for real-time updates - FIXED: Only connect if not already connected
   useEffect(() => {
@@ -377,6 +391,41 @@ export default function ChatRoomsPage() {
     if (messagesEndRef.current && !switchingRoomRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
+  }, []);
+
+  // Add this useEffect to save messages to localStorage when they change
+  useEffect(() => {
+    if (selectedRoom && messages.length > 0) {
+      try {
+        localStorage.setItem(
+          `chat_messages_${selectedRoom.id}`,
+          JSON.stringify(messages)
+        );
+      } catch (error) {
+        console.error("Failed to cache messages:", error);
+      }
+    }
+  }, [selectedRoom, messages]);
+
+  // Add this useEffect to clear old cache when component mounts
+  useEffect(() => {
+    // Clear old cached messages (older than 1 day)
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith("chat_messages_")) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || "[]");
+          if (data[0]?.timestamp) {
+            const messageTime = new Date(data[0].timestamp).getTime();
+            if (messageTime < oneDayAgo) {
+              localStorage.removeItem(key);
+            }
+          }
+        } catch {
+          // Ignore invalid data
+        }
+      }
+    });
   }, []);
 
   const fetchUsers = async () => {
@@ -496,12 +545,26 @@ export default function ChatRoomsPage() {
         // Get the room key
         const key = String(room.room_id ?? room.id ?? "");
 
-        // Connect to the room via WebSocket
+        // Connect to the room via WebSocket with a timeout
+        const connectPromise = ws.connectToRoom(key);
+
+        // Timeout for connection
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timeout")), 10000)
+        );
+
         try {
-          await ws.connectToRoom(key);
+          await Promise.race([connectPromise, timeoutPromise]);
+        } catch (error) {
+          console.error("Failed to connect to room:", error);
+          // Continue anyway - messages might load from cache
+        }
+
+        // Mark as read
+        try {
           await ws.markAsRead(key);
-        } catch (e) {
-          console.error("Failed to connect to room via websocket", e);
+        } catch (error) {
+          console.error("Failed to mark as read:", error);
         }
 
         // Update unread counts
@@ -509,15 +572,38 @@ export default function ChatRoomsPage() {
           ...prev,
           [room.id]: 0,
         }));
+
+        // Check if we have cached messages in localStorage
+        try {
+          const cached = localStorage.getItem(`chat_messages_${room.id}`);
+          if (cached) {
+            const parsed = JSON.parse(cached) as ExtendedMessage[];
+            if (parsed.length > 0) {
+              setMessages(parsed);
+              setLoadingMessages(false);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to load cached messages:", error);
+        }
       } finally {
+        // Don't set loading to false immediately - wait a bit
         setTimeout(() => {
           setIsSwitchingRoom(false);
           switchingRoomRef.current = false;
-          setLoadingMessages(false);
-        }, 300);
+          // Keep loading true if still no messages
+          if (messages.length === 0) {
+            // Show "no messages" state after 5 seconds
+            setTimeout(() => {
+              setLoadingMessages(false);
+            }, 5000);
+          } else {
+            setLoadingMessages(false);
+          }
+        }, 500);
       }
     },
-    [selectedRoom, ws]
+    [selectedRoom, ws, messages.length]
   );
 
   const handleSendMessage = async () => {
@@ -588,22 +674,30 @@ export default function ChatRoomsPage() {
     if (!file || !selectedRoom || selectedRoom.status === "closed") return;
 
     try {
-      const previewUrl = URL.createObjectURL(file);
+      const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const roomKey = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
       const fileType = file.type.startsWith("video/")
         ? "video"
         : file.type.startsWith("audio/")
         ? "audio"
         : "image";
 
-      const messageWithAttachment: ExtendedMessage = {
+      // Create preview URL for immediate UI display
+      const previewUrl = URL.createObjectURL(file);
+
+      // Create optimistic message with preview
+      const optimistic: ExtendedMessage = {
         id: Date.now(),
-        content: "",
+        content: `Uploading ${file.name}...`,
         sender: {
           id: user?.id || 1,
           name: user?.name || "Support Agent",
           email: user?.email || "agent@example.com",
+          profile_picture: null,
+          is_staff: true,
         } as MessageSender,
         room: selectedRoom.id,
+        chat_room: selectedRoom.id,
         is_read: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -618,30 +712,57 @@ export default function ChatRoomsPage() {
         ],
       };
 
-      setMessages((prev) => [...prev, messageWithAttachment]);
+      // Optimistically add to UI
+      setMessages((prev) => [...prev, optimistic]);
 
-      const lastMessage =
-        fileType === "image"
-          ? "📷 Image"
-          : fileType === "video"
-          ? "🎥 Video"
-          : "🎵 Audio";
-      setChatRooms((prev) =>
-        prev.map((room) =>
-          room.id === selectedRoom.id
-            ? {
-                ...room,
-                last_message: lastMessage,
-                updated_at: new Date().toISOString(),
-              }
-            : room
-        )
-      );
+      try {
+        ws.addLocalMessage(roomKey, optimistic as any);
+      } catch (error) {
+        console.error("Failed to add to ws local messages:", error);
+      }
 
-      e.target.value = "";
+      // SEND THE FILE VIA WEBSOCKET - THIS IS WHAT WAS MISSING!
+      try {
+        await ws.sendMessage(roomKey, "", tempId, file);
+
+        // Update chat room's last message locally
+        setChatRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id
+              ? {
+                  ...room,
+                  last_message: {
+                    text:
+                      fileType === "image"
+                        ? "📷 Image"
+                        : fileType === "video"
+                        ? "🎥 Video"
+                        : "🎵 Audio",
+                    is_media: true,
+                    created_at: new Date().toISOString(),
+                    sender: user?.name || "Support Agent",
+                  },
+                  updated_at: new Date().toISOString(),
+                }
+              : room
+          )
+        );
+      } catch (err) {
+        console.error("WS send failed", err);
+        // Update optimistic message to show error
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === optimistic.id
+              ? { ...msg, content: `❌ Failed to upload ${file.name}` }
+              : msg
+          )
+        );
+      }
     } catch (error) {
-      console.error("Error uploading file:", error);
+      console.error("Error handling file upload:", error);
       alert("Failed to upload file");
+    } finally {
+      e.target.value = "";
     }
   };
 
@@ -712,14 +833,100 @@ export default function ChatRoomsPage() {
     }
   };
 
-  const handleStopRecording = () => {
+  const handleStopRecording = async () => {
     if (
       mediaRecorderRef.current &&
       mediaRecorderRef.current.state === "recording"
     ) {
       mediaRecorderRef.current.stop();
+
+      // Wait a bit for the recording to finish
+      setTimeout(async () => {
+        const audioBlob = new Blob(recordedChunksRef.current, {
+          type: "audio/webm",
+        });
+
+        const tempId = `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        const roomKey = String(selectedRoom?.room_id ?? selectedRoom?.id ?? "");
+
+        if (!selectedRoom || !roomKey) return;
+
+        // Create preview URL
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        // Create optimistic message
+        const optimistic: ExtendedMessage = {
+          id: Date.now(),
+          content: "Recording...",
+          sender: {
+            id: user?.id || 1,
+            name: user?.name || "Support Agent",
+            email: user?.email || "agent@example.com",
+          } as MessageSender,
+          room: selectedRoom.id,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          attachments: [
+            {
+              id: Date.now(),
+              file_type: "audio",
+              file_url: audioUrl,
+              file_name: "voice-message.webm",
+              file_size: audioBlob.size,
+            },
+          ],
+        };
+
+        // Add optimistic message
+        setMessages((prev) => [...prev, optimistic]);
+
+        // SEND THE AUDIO VIA WEBSOCKET - THIS WAS MISSING!
+        try {
+          await ws.sendMessage(roomKey, "", tempId, audioBlob);
+
+          // Update chat room
+          setChatRooms((prev) =>
+            prev.map((room) =>
+              room.id === selectedRoom.id
+                ? {
+                    ...room,
+                    last_message: {
+                      text: "🎵 Voice message",
+                      is_media: true,
+                      created_at: new Date().toISOString(),
+                      sender: user?.name || "Support Agent",
+                    },
+                    updated_at: new Date().toISOString(),
+                  }
+                : room
+            )
+          );
+        } catch (error) {
+          console.error("Error sending audio:", error);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === optimistic.id
+                ? { ...msg, content: "❌ Failed to send audio" }
+                : msg
+            )
+          );
+        }
+
+        recordedChunksRef.current = [];
+      }, 100);
     }
+
     setIsRecording(false);
+
+    // Stop all tracks
+    if (mediaRecorderRef.current?.stream) {
+      mediaRecorderRef.current.stream
+        .getTracks()
+        .forEach((track) => track.stop());
+    }
   };
 
   const handleReopenCase = async () => {
@@ -1588,7 +1795,7 @@ export default function ChatRoomsPage() {
 
                                       // Regular text content
                                       return (
-                                        <p className="whitespace-pre-wrap mb-2">
+                                        <p className="break-words whitespace-pre-wrap mb-2">
                                           {content}
                                         </p>
                                       );

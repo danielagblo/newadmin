@@ -90,6 +90,8 @@ function getWsBase() {
 export default function useWsChat(): UseWsChatReturn {
   const [messages, setMessages] = useState<RoomMessages>({});
   const [chatrooms, setChatrooms] = useState<ChatRoom[]>([]);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
+
   // Load cached chatrooms from localStorage so UI can show avatars immediately
   useEffect(() => {
     try {
@@ -1221,96 +1223,130 @@ export default function useWsChat(): UseWsChatReturn {
       const key = normalizeRoomId(roomId);
       console.log("Normalized room key:", key);
 
-      // Build the WebSocket URL - EXACTLY like other functions
+      let messageToSend = text;
+      let isMedia = false;
+      let fileType = "";
+      let fileName = "";
+
+      if (file) {
+        console.log("Processing file for upload:", file.type, file.size);
+
+        // Convert file to FULL data URL (including data: prefix)
+        messageToSend = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            // Send the FULL data URL including data:image/...;base64, prefix
+            const result = reader.result as string;
+            console.log("File converted to data URL, length:", result.length);
+            resolve(result);
+          };
+          reader.onerror = () => {
+            console.error("FileReader error:", reader.error);
+            reject(new Error("Failed to read file"));
+          };
+          reader.readAsDataURL(file);
+        });
+
+        isMedia = true;
+        fileType = file.type;
+        fileName = file instanceof File ? file.name : "audio.webm";
+      }
+
+      // Build the WebSocket URL
       const wsBase = getWsBase();
       const encoded = encodeURIComponent(key);
       const url = `${wsBase}/chat/${encoded}/?token=${token}`;
       console.log("WebSocket URL for sending:", url);
 
-      // Create a NEW WebSocketClient JUST for sending - like other functions do
-      const client = new WebSocketClient(url, token, {
-        onOpen: () => {
-          console.log("sendMessage WebSocket connected");
+      // Wrap in a Promise to handle async WebSocket connection
+      return new Promise<void>((resolve, reject) => {
+        // Create a NEW WebSocketClient JUST for sending
+        const client = new WebSocketClient(url, token, {
+          onOpen: () => {
+            console.log("sendMessage WebSocket connected");
 
-          try {
-            if (file) {
-              // Handle file sending
-              const MAX_EMBED = 5_000_000;
-              const size = (file as any).size || 0;
-              if (size > MAX_EMBED) {
-                throw new Error("File too large to send via websocket");
+            try {
+              const payload = {
+                type: "chat_message",
+                message: messageToSend,
+                temp_id: tempId,
+              };
+
+              // Add file metadata if it's a file
+              if (file) {
+                Object.assign(payload, {
+                  file_name: fileName,
+                  file_type: fileType,
+                  file_size: file.size,
+                  is_media: true,
+                });
+                console.log("Sending file as data URL");
+              } else {
+                Object.assign(payload, { is_media: false });
+                console.log("Sending text message");
               }
 
-              // Convert file to data URL
-              const reader = new FileReader();
-              reader.onload = () => {
-                const dataUrl = String(reader.result ?? "");
-                client.send({
-                  type: "chat_message",
-                  message: dataUrl,
-                  temp_id: tempId,
-                });
-                console.log("File sent via WebSocket");
-
-                // Close after sending (like a one-time connection)
-                setTimeout(() => {
-                  try {
-                    client.close();
-                  } catch {}
-                }, 100);
-              };
-              reader.onerror = () => {
-                throw new Error("Failed to read file");
-              };
-              reader.readAsDataURL(file as Blob);
-            } else {
-              // Send text message
-              client.send({
-                type: "chat_message",
-                message: text,
-                temp_id: tempId,
-              });
-              console.log("Text message sent via WebSocket");
+              client.send(payload);
+              console.log("Message sent via WebSocket");
 
               // Close after sending
               setTimeout(() => {
                 try {
                   client.close();
-                } catch {}
+                } catch (err) {
+                  console.error("Error closing client:", err);
+                }
+                resolve(); // Resolve the promise
               }, 100);
+            } catch (error) {
+              console.error("Failed to send message:", error);
+              reject(error);
             }
-          } catch (error) {
-            console.error("Failed to send message:", error);
-          }
-        },
+          },
 
-        onClose: (ev) => {
-          console.log("sendMessage WebSocket closed:", ev?.code, ev?.reason);
-        },
+          onClose: (ev) => {
+            console.log("sendMessage WebSocket closed:", ev?.code, ev?.reason);
+            // If we haven't resolved/rejected yet, resolve now
+            // (connection might close after sending successfully)
+          },
 
-        onError: (error) => {
-          console.error("sendMessage WebSocket error:", error);
-        },
+          onError: (error) => {
+            console.error("sendMessage WebSocket error:", error);
+            reject(error);
+          },
 
-        onMessage: (data) => {
-          // Optional: Handle server confirmation/echo
-          console.log("sendMessage received response:", data);
-        },
+          onMessage: (data) => {
+            console.log("sendMessage received response:", data);
+            // Server might send confirmation
+          },
+        });
+
+        try {
+          // Connect the WebSocket
+          client.connect();
+          console.log("sendMessage WebSocket connection initiated");
+
+          // Set a timeout for connection
+          const timeout = setTimeout(() => {
+            if (!client.isOpen()) {
+              reject(new Error("WebSocket connection timeout"));
+              try {
+                client.close();
+              } catch {}
+            }
+          }, 5000); // 5 second timeout
+
+          // Clean up timeout on success
+          client.onOpen = () => {
+            clearTimeout(timeout);
+          };
+        } catch (error) {
+          console.error("Failed to create WebSocket for sending:", error);
+          reject(new Error(`WebSocket send failed: ${error}`));
+        }
       });
-
-      try {
-        // Connect the WebSocket - EXACTLY like other functions
-        client.connect();
-        console.log("sendMessage WebSocket connection initiated");
-
-        // Wait briefly for connection
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error("Failed to create WebSocket for sending:", error);
-        throw new Error(`WebSocket send failed: ${error}`);
-      }
     },
-    [token] // Add token as dependency
+    [token]
   );
 
   // Note: use `sendTypingOptimistic` which also updates local typing state.
