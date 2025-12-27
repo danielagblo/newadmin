@@ -1,5 +1,5 @@
-import apiClient from './config';
 import { Coupon, CreateCouponForm } from '../types';
+import apiClient from './config';
 
 export const couponsApi = {
   list: async (params?: {
@@ -40,6 +40,12 @@ export const couponsApi = {
 
   expire: async (id: number): Promise<{ status: string }> => {
     const response = await apiClient.post<{ status: string }>(`/coupons/${id}/expire/`);
+    return response.data;
+  },
+
+  broadcast: async (id: number, user_ids: number[]): Promise<any> => {
+    const payload = { user_ids };
+    const response = await apiClient.post(`/coupons/${id}/broadcast/`, payload);
     return response.data;
   },
 };
