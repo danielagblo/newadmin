@@ -1337,9 +1337,9 @@ export default function useWsChat(): UseWsChatReturn {
           }, 5000); // 5 second timeout
 
           // Clean up timeout on success
-          client.onOpen = () => {
-            clearTimeout(timeout);
-          };
+          // client.onOpen = () => {
+          //   clearTimeout(timeout);
+          // };
         } catch (error) {
           console.error("Failed to create WebSocket for sending:", error);
           reject(new Error(`WebSocket send failed: ${error}`));

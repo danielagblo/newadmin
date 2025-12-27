@@ -238,8 +238,15 @@ export default function ChatRoomsPage() {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (selectedRoom && !switchingRoomRef.current) {
+      // Scroll to bottom after a short delay to ensure messages are rendered
+      const scrollTimer = setTimeout(() => {
+        scrollToBottom();
+      }, 300);
+
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [selectedRoom]);
 
   // Use a ref to store the latest messages for WebSocket comparison
   const messagesRef = useRef(messages);
@@ -637,6 +644,10 @@ export default function ChatRoomsPage() {
         ws.addLocalMessage(roomKey, optimistic as any);
       } catch {}
 
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+
       // Send via websocket
       try {
         await ws.sendMessage(roomKey, newMessage.trim(), tempId);
@@ -683,12 +694,21 @@ export default function ChatRoomsPage() {
         : "image";
 
       // Create preview URL for immediate UI display
-      const previewUrl = URL.createObjectURL(file);
+      const base64DataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // This is the full data URL: data:image/jpeg;base64,...
+          const result = reader.result as string;
+          resolve(result);
+        };
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
 
-      // Create optimistic message with preview
+      // Create optimistic message with ACTUAL base64 image
       const optimistic: ExtendedMessage = {
         id: Date.now(),
-        content: `Uploading ${file.name}...`,
+        content: base64DataUrl, // T
         sender: {
           id: user?.id || 1,
           name: user?.name || "Support Agent",
@@ -705,7 +725,7 @@ export default function ChatRoomsPage() {
           {
             id: Date.now(),
             file_type: fileType,
-            file_url: previewUrl,
+            file_url: base64DataUrl,
             file_name: file.name,
             file_size: file.size,
           },
@@ -720,6 +740,10 @@ export default function ChatRoomsPage() {
       } catch (error) {
         console.error("Failed to add to ws local messages:", error);
       }
+
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
 
       // SEND THE FILE VIA WEBSOCKET - THIS IS WHAT WAS MISSING!
       try {
@@ -882,7 +906,9 @@ export default function ChatRoomsPage() {
 
         // Add optimistic message
         setMessages((prev) => [...prev, optimistic]);
-
+        setTimeout(() => {
+          scrollToBottom();
+        }, 100);
         // SEND THE AUDIO VIA WEBSOCKET - THIS WAS MISSING!
         try {
           await ws.sendMessage(roomKey, "", tempId, audioBlob);
@@ -1047,7 +1073,11 @@ export default function ChatRoomsPage() {
         (room) => room.updated_at && new Date(room.updated_at) > oneDayAgo
       );
     }
-    return filtered;
+    return filtered.sort((a, b) => {
+      const timeA = new Date(getRoomUpdatedTime(a)).getTime();
+      const timeB = new Date(getRoomUpdatedTime(b)).getTime();
+      return timeB - timeA; // Descending
+    });
   }, [chatRooms, searchTerm, filterOption]);
 
   const getUnreadCount = (roomId: number) => {
@@ -1269,7 +1299,7 @@ export default function ChatRoomsPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {filteredChatRooms?.reverse().map((room) => {
+                {filteredChatRooms?.map((room) => {
                   const isActive = selectedRoom?.id === room.id;
                   const isClosed = room.status === "closed";
                   const unreadCount = getUnreadCount(room.id);
@@ -1870,12 +1900,12 @@ export default function ChatRoomsPage() {
                 </div>
               ) : (
                 <div className="p-4 border-t">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 flex items-center border border-gray-300 rounded-xl overflow-hidden">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 flex items-end border border-gray-300 rounded-xl overflow-hidden">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-3 text-gray-500 hover:text-gray-700"
+                        className="p-3 text-gray-500 hover:text-gray-700 self-end"
                         title="Attach file"
                       >
                         <ImageIcon className="h-5 w-5" />
@@ -1889,8 +1919,7 @@ export default function ChatRoomsPage() {
                         onChange={handleImageUpload}
                       />
 
-                      <input
-                        type="text"
+                      <textarea
                         placeholder={
                           replyingTo
                             ? `Replying to message...`
@@ -1904,7 +1933,23 @@ export default function ChatRoomsPage() {
                             handleSendMessage();
                           }
                         }}
-                        className="flex-1 px-2 py-3 border-0 outline-none focus:ring-0"
+                        className="flex-1 px-3 py-3 border-0 outline-none focus:ring-0 resize-none overflow-hidden"
+                        rows={1}
+                        style={{
+                          minHeight: "44px",
+                          maxHeight: "120px",
+                        }}
+                        ref={(el) => {
+                          if (el) {
+                            // Auto-expand textarea based on content
+                            el.style.height = "auto";
+                            const newHeight = Math.min(
+                              Math.max(el.scrollHeight, 44),
+                              120
+                            );
+                            el.style.height = `${newHeight}px`;
+                          }
+                        }}
                       />
 
                       <button
@@ -1914,7 +1959,7 @@ export default function ChatRoomsPage() {
                             ? handleStopRecording
                             : handleStartRecording
                         }
-                        className={`p-3 ${
+                        className={`p-3 self-end ${
                           isRecording
                             ? "text-red-600 animate-pulse"
                             : "text-gray-500 hover:text-gray-700"
@@ -1932,7 +1977,7 @@ export default function ChatRoomsPage() {
                     <Button
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim()}
-                      className="h-full px-4"
+                      className="h-[44px] px-4 self-end"
                     >
                       {replyingTo ? (
                         <>
