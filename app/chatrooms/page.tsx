@@ -30,7 +30,13 @@ import {
   AlertCircle,
   UserCheck,
 } from "lucide-react";
-import React, { useEffect, useState, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import Image from "next/image";
 import useWsChat from "@/lib/hooks/useWsChat";
 
@@ -93,6 +99,10 @@ export default function ChatRoomsPage() {
   const [filterOption, setFilterOption] = useState("All");
   const [openFilter, setOpenFilter] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [isSwitchingRoom, setIsSwitchingRoom] = useState(false);
+  const [lastSelectedRoomId, setLastSelectedRoomId] = useState<number | null>(
+    null
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +113,9 @@ export default function ChatRoomsPage() {
     typeof window !== "undefined"
       ? JSON.parse(localStorage.getItem("user") || "null")
       : null;
+
+  // Store a ref to track if we're currently switching rooms
+  const switchingRoomRef = useRef(false);
 
   const handleReplyToMessage = (message: ExtendedMessage) => {
     setReplyingTo(message);
@@ -228,6 +241,18 @@ export default function ChatRoomsPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Use a ref to store the latest messages for WebSocket comparison
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Use a ref to store the latest selected room
+  const selectedRoomRef = useRef(selectedRoom);
+  useEffect(() => {
+    selectedRoomRef.current = selectedRoom;
+  }, [selectedRoom]);
+
   useEffect(() => {
     try {
       if (Array.isArray(ws.chatrooms)) {
@@ -244,93 +269,164 @@ export default function ChatRoomsPage() {
     } catch {}
   }, [ws.chatrooms]);
 
-  // Fixed: Single useEffect for message syncing
+  // Fixed: Debounced message syncing with room check
+  // Replace the entire useEffect that syncs messages with this:
   useEffect(() => {
-    try {
-      if (!selectedRoom) return;
+    if (!selectedRoom || switchingRoomRef.current) return;
 
-      const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
+    const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
 
-      if (ws.messages[key]) {
-        const wsMessages = ws.messages[key];
+    // Always sync when we have WebSocket messages for this room
+    if (ws.messages[key] && Array.isArray(ws.messages[key])) {
+      const wsMessages = ws.messages[key];
 
-        const formattedMessages: ExtendedMessage[] = wsMessages.map(
-          (msg: any) => {
-            let senderInfo: MessageSender = {
-              id: 0,
-              name: "Unknown",
-              email: null,
-              profile_picture: null,
+      // Don't check for "actual changes" - just update
+      setLoadingMessages(true);
+
+      const formattedMessages: ExtendedMessage[] = wsMessages.map(
+        (msg: any) => {
+          let senderInfo: MessageSender = {
+            id: 0,
+            name: "Unknown",
+            email: null,
+            profile_picture: null,
+          };
+
+          if (typeof msg.sender === "string") {
+            senderInfo.name = msg.sender;
+            senderInfo.email = msg.email || null;
+          } else if (msg.sender && typeof msg.sender === "object") {
+            senderInfo = {
+              ...senderInfo,
+              ...msg.sender,
             };
-
-            if (typeof msg.sender === "string") {
-              senderInfo.name = msg.sender;
-              senderInfo.email = msg.email || null;
-            } else if (msg.sender && typeof msg.sender === "object") {
-              senderInfo = {
-                ...senderInfo,
-                ...msg.sender,
-              };
-            }
-
-            const isStaffOrAdmin =
-              msg.email === user?.email ||
-              (msg.sender &&
-                typeof msg.sender === "string" &&
-                msg.sender === user?.name);
-
-            return {
-              id: msg.id,
-              content: msg.content,
-              sender: senderInfo,
-              room: selectedRoom.id,
-              chat_room: selectedRoom.id,
-              created_at:
-                msg.created_at || msg.timestamp || new Date().toISOString(),
-              updated_at:
-                msg.updated_at ||
-                msg.created_at ||
-                msg.timestamp ||
-                new Date().toISOString(),
-              is_read: isStaffOrAdmin ? true : msg.is_read || false,
-            } as ExtendedMessage;
           }
-        );
 
-        setMessages(formattedMessages);
+          const isStaffOrAdmin =
+            msg.email === user?.email ||
+            (msg.sender &&
+              typeof msg.sender === "string" &&
+              msg.sender === user?.name);
 
-        if (formattedMessages.length > 0) {
-          ws.markAsRead(key);
-          setUnreadCounts((prev) => ({
-            ...prev,
-            [selectedRoom.id]: 0,
-          }));
+          return {
+            id: msg.id,
+            content: msg.content,
+            sender: senderInfo,
+            room: selectedRoom.id,
+            chat_room: selectedRoom.id,
+            created_at:
+              msg.created_at || msg.timestamp || new Date().toISOString(),
+            updated_at:
+              msg.updated_at ||
+              msg.created_at ||
+              msg.timestamp ||
+              new Date().toISOString(),
+            is_read: isStaffOrAdmin ? true : msg.is_read || false,
+          } as ExtendedMessage;
         }
-      }
-    } catch (error) {
-      console.error("Error syncing messages:", error);
-    }
-  }, [selectedRoom, ws.messages, user, ws.markAsRead, ws]);
+      );
 
-  // Add polling for real-time updates
+      // Set messages immediately
+      setMessages(formattedMessages);
+
+      if (formattedMessages.length > 0) {
+        ws.markAsRead(key);
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [selectedRoom.id]: 0,
+        }));
+      }
+
+      setLoadingMessages(false);
+    } else if (ws.messages[key] === undefined) {
+      // No messages yet for this room - try to connect to room
+      const connectRoom = async () => {
+        try {
+          await ws.connectToRoom(key);
+
+          // Set a timeout to show loading if no messages arrive
+          setTimeout(() => {
+            if (messages.length === 0) {
+              // Still no messages after connection
+              console.log("No messages received after connection attempt");
+            }
+          }, 3000);
+        } catch (error) {
+          console.error("Failed to connect to room:", error);
+        }
+      };
+
+      connectRoom();
+    }
+  }, [
+    selectedRoom,
+    ws.messages,
+    user,
+    ws.markAsRead,
+    ws,
+    ws.connectToRoom,
+    messages.length,
+  ]);
+
+  // Add polling for real-time updates - FIXED: Only connect if not already connected
   useEffect(() => {
     if (!selectedRoom) return;
 
     const interval = setInterval(() => {
-      if (selectedRoom) {
+      if (selectedRoom && !switchingRoomRef.current) {
         const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
         try {
-          ws.connectToRoom(key);
+          // Only connect if not already connected
+          if (!ws.isRoomConnected(key)) {
+            ws.connectToRoom(key);
+          }
         } catch {}
       }
-    }, 5000);
+    }, 10000); // Increased to 10 seconds to reduce frequency
 
     return () => clearInterval(interval);
   }, [selectedRoom, ws.connectToRoom, ws]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current && !switchingRoomRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
+
+  // Add this useEffect to save messages to localStorage when they change
+  useEffect(() => {
+    if (selectedRoom && messages.length > 0) {
+      try {
+        localStorage.setItem(
+          `chat_messages_${selectedRoom.id}`,
+          JSON.stringify(messages)
+        );
+      } catch (error) {
+        console.error("Failed to cache messages:", error);
+      }
+    }
+  }, [selectedRoom, messages]);
+
+  // Add this useEffect to clear old cache when component mounts
+  useEffect(() => {
+    // Clear old cached messages (older than 1 day)
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith("chat_messages_")) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || "[]");
+          if (data[0]?.timestamp) {
+            const messageTime = new Date(data[0].timestamp).getTime();
+            if (messageTime < oneDayAgo) {
+              localStorage.removeItem(key);
+            }
+          }
+        } catch {
+          // Ignore invalid data
+        }
+      }
+    });
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -346,6 +442,11 @@ export default function ChatRoomsPage() {
 
   const handleCreateCase = async (selectedUser: ExtendedUser) => {
     try {
+      // Clear current messages
+      setMessages([]);
+      setReplyingTo(null);
+      switchingRoomRef.current = true;
+
       const roomPayload: any = {
         name: `${selectedUser.name} - Support Case`,
         email: selectedUser?.email,
@@ -382,6 +483,7 @@ export default function ChatRoomsPage() {
 
       // Immediately select the new room
       setSelectedRoom(extendedRoom);
+      setLastSelectedRoomId(extendedRoom.id);
 
       // Connect to the room via WebSocket
       const roomKey = String(extendedRoom.room_id ?? extendedRoom.id ?? "");
@@ -408,6 +510,7 @@ export default function ChatRoomsPage() {
 
       setMessages([systemMessage]);
       setIsUsersModalOpen(false);
+      switchingRoomRef.current = false;
 
       // Also manually refresh chatrooms list to ensure WebSocket picks it up
       setTimeout(() => {
@@ -418,23 +521,90 @@ export default function ChatRoomsPage() {
     } catch (error: any) {
       console.error("Error creating case:", error);
       alert(error.response?.data?.detail || "Failed to create case");
+      switchingRoomRef.current = false;
     }
   };
 
-  const handleSelectRoom = async (room: ExtendedChatRoom) => {
-    setSelectedRoom(room);
-    try {
-      const key = String(room.room_id ?? room.id ?? "");
-      await ws.connectToRoom(key);
-      await ws.markAsRead(key);
-      setUnreadCounts((prev) => ({
-        ...prev,
-        [room.id]: 0,
-      }));
-    } catch (e) {
-      console.error("Failed to connect to room via websocket", e);
-    }
-  };
+  const handleSelectRoom = useCallback(
+    async (room: ExtendedChatRoom) => {
+      if (selectedRoom?.id === room.id || switchingRoomRef.current) return;
+
+      setIsSwitchingRoom(true);
+      switchingRoomRef.current = true;
+      setLoadingMessages(true);
+
+      try {
+        // Clear previous messages immediately for UI responsiveness
+        setMessages([]);
+        setReplyingTo(null);
+
+        // Set new room
+        setSelectedRoom(room);
+        setLastSelectedRoomId(room.id);
+
+        // Get the room key
+        const key = String(room.room_id ?? room.id ?? "");
+
+        // Connect to the room via WebSocket with a timeout
+        const connectPromise = ws.connectToRoom(key);
+
+        // Timeout for connection
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timeout")), 10000)
+        );
+
+        try {
+          await Promise.race([connectPromise, timeoutPromise]);
+        } catch (error) {
+          console.error("Failed to connect to room:", error);
+          // Continue anyway - messages might load from cache
+        }
+
+        // Mark as read
+        try {
+          await ws.markAsRead(key);
+        } catch (error) {
+          console.error("Failed to mark as read:", error);
+        }
+
+        // Update unread counts
+        setUnreadCounts((prev) => ({
+          ...prev,
+          [room.id]: 0,
+        }));
+
+        // Check if we have cached messages in localStorage
+        try {
+          const cached = localStorage.getItem(`chat_messages_${room.id}`);
+          if (cached) {
+            const parsed = JSON.parse(cached) as ExtendedMessage[];
+            if (parsed.length > 0) {
+              setMessages(parsed);
+              setLoadingMessages(false);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to load cached messages:", error);
+        }
+      } finally {
+        // Don't set loading to false immediately - wait a bit
+        setTimeout(() => {
+          setIsSwitchingRoom(false);
+          switchingRoomRef.current = false;
+          // Keep loading true if still no messages
+          if (messages.length === 0) {
+            // Show "no messages" state after 5 seconds
+            setTimeout(() => {
+              setLoadingMessages(false);
+            }, 5000);
+          } else {
+            setLoadingMessages(false);
+          }
+        }, 500);
+      }
+    },
+    [selectedRoom, ws, messages.length]
+  );
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRoom || selectedRoom.status === "closed")
@@ -504,22 +674,30 @@ export default function ChatRoomsPage() {
     if (!file || !selectedRoom || selectedRoom.status === "closed") return;
 
     try {
-      const previewUrl = URL.createObjectURL(file);
+      const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const roomKey = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
       const fileType = file.type.startsWith("video/")
         ? "video"
         : file.type.startsWith("audio/")
         ? "audio"
         : "image";
 
-      const messageWithAttachment: ExtendedMessage = {
+      // Create preview URL for immediate UI display
+      const previewUrl = URL.createObjectURL(file);
+
+      // Create optimistic message with preview
+      const optimistic: ExtendedMessage = {
         id: Date.now(),
-        content: "",
+        content: `Uploading ${file.name}...`,
         sender: {
           id: user?.id || 1,
           name: user?.name || "Support Agent",
           email: user?.email || "agent@example.com",
+          profile_picture: null,
+          is_staff: true,
         } as MessageSender,
         room: selectedRoom.id,
+        chat_room: selectedRoom.id,
         is_read: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -534,30 +712,57 @@ export default function ChatRoomsPage() {
         ],
       };
 
-      setMessages((prev) => [...prev, messageWithAttachment]);
+      // Optimistically add to UI
+      setMessages((prev) => [...prev, optimistic]);
 
-      const lastMessage =
-        fileType === "image"
-          ? "📷 Image"
-          : fileType === "video"
-          ? "🎥 Video"
-          : "🎵 Audio";
-      setChatRooms((prev) =>
-        prev.map((room) =>
-          room.id === selectedRoom.id
-            ? {
-                ...room,
-                last_message: lastMessage,
-                updated_at: new Date().toISOString(),
-              }
-            : room
-        )
-      );
+      try {
+        ws.addLocalMessage(roomKey, optimistic as any);
+      } catch (error) {
+        console.error("Failed to add to ws local messages:", error);
+      }
 
-      e.target.value = "";
+      // SEND THE FILE VIA WEBSOCKET - THIS IS WHAT WAS MISSING!
+      try {
+        await ws.sendMessage(roomKey, "", tempId, file);
+
+        // Update chat room's last message locally
+        setChatRooms((prev) =>
+          prev.map((room) =>
+            room.id === selectedRoom.id
+              ? {
+                  ...room,
+                  last_message: {
+                    text:
+                      fileType === "image"
+                        ? "📷 Image"
+                        : fileType === "video"
+                        ? "🎥 Video"
+                        : "🎵 Audio",
+                    is_media: true,
+                    created_at: new Date().toISOString(),
+                    sender: user?.name || "Support Agent",
+                  },
+                  updated_at: new Date().toISOString(),
+                }
+              : room
+          )
+        );
+      } catch (err) {
+        console.error("WS send failed", err);
+        // Update optimistic message to show error
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === optimistic.id
+              ? { ...msg, content: `❌ Failed to upload ${file.name}` }
+              : msg
+          )
+        );
+      }
     } catch (error) {
-      console.error("Error uploading file:", error);
+      console.error("Error handling file upload:", error);
       alert("Failed to upload file");
+    } finally {
+      e.target.value = "";
     }
   };
 
@@ -628,14 +833,100 @@ export default function ChatRoomsPage() {
     }
   };
 
-  const handleStopRecording = () => {
+  const handleStopRecording = async () => {
     if (
       mediaRecorderRef.current &&
       mediaRecorderRef.current.state === "recording"
     ) {
       mediaRecorderRef.current.stop();
+
+      // Wait a bit for the recording to finish
+      setTimeout(async () => {
+        const audioBlob = new Blob(recordedChunksRef.current, {
+          type: "audio/webm",
+        });
+
+        const tempId = `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        const roomKey = String(selectedRoom?.room_id ?? selectedRoom?.id ?? "");
+
+        if (!selectedRoom || !roomKey) return;
+
+        // Create preview URL
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        // Create optimistic message
+        const optimistic: ExtendedMessage = {
+          id: Date.now(),
+          content: "Recording...",
+          sender: {
+            id: user?.id || 1,
+            name: user?.name || "Support Agent",
+            email: user?.email || "agent@example.com",
+          } as MessageSender,
+          room: selectedRoom.id,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          attachments: [
+            {
+              id: Date.now(),
+              file_type: "audio",
+              file_url: audioUrl,
+              file_name: "voice-message.webm",
+              file_size: audioBlob.size,
+            },
+          ],
+        };
+
+        // Add optimistic message
+        setMessages((prev) => [...prev, optimistic]);
+
+        // SEND THE AUDIO VIA WEBSOCKET - THIS WAS MISSING!
+        try {
+          await ws.sendMessage(roomKey, "", tempId, audioBlob);
+
+          // Update chat room
+          setChatRooms((prev) =>
+            prev.map((room) =>
+              room.id === selectedRoom.id
+                ? {
+                    ...room,
+                    last_message: {
+                      text: "🎵 Voice message",
+                      is_media: true,
+                      created_at: new Date().toISOString(),
+                      sender: user?.name || "Support Agent",
+                    },
+                    updated_at: new Date().toISOString(),
+                  }
+                : room
+            )
+          );
+        } catch (error) {
+          console.error("Error sending audio:", error);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === optimistic.id
+                ? { ...msg, content: "❌ Failed to send audio" }
+                : msg
+            )
+          );
+        }
+
+        recordedChunksRef.current = [];
+      }, 100);
     }
+
     setIsRecording(false);
+
+    // Stop all tracks
+    if (mediaRecorderRef.current?.stream) {
+      mediaRecorderRef.current.stream
+        .getTracks()
+        .forEach((track) => track.stop());
+    }
   };
 
   const handleReopenCase = async () => {
@@ -709,7 +1000,7 @@ export default function ChatRoomsPage() {
     }
   };
 
-  const groupMessagesByDate = (messages: ExtendedMessage[]) => {
+  const groupMessagesByDate = useCallback((messages: ExtendedMessage[]) => {
     const groups: { [key: string]: ExtendedMessage[] } = {};
     messages.forEach((message) => {
       const dateLabel = getDateLabel(message.created_at);
@@ -722,9 +1013,9 @@ export default function ChatRoomsPage() {
       label,
       messages: msgs,
     }));
-  };
+  }, []);
 
-  const getFilteredChatRooms = () => {
+  const getFilteredChatRooms = useCallback(() => {
     let filtered = [...chatRooms];
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
@@ -757,18 +1048,51 @@ export default function ChatRoomsPage() {
       );
     }
     return filtered;
-  };
+  }, [chatRooms, searchTerm, filterOption]);
 
   const getUnreadCount = (roomId: number) => {
     return unreadCounts[roomId] || 0;
   };
 
   const getLastMessage = (room: ExtendedChatRoom) => {
+    // If last_message is an object
     if (room.last_message && typeof room.last_message === "object") {
       const lastMsg = room.last_message as any;
-      return lastMsg.text || "No messages yet";
+      const text = lastMsg.text || "";
+
+      // Check if text contains data URLs
+      if (text.includes("data:image/")) {
+        return "📷 Image";
+      }
+      if (text.includes("data:audio/")) {
+        return "🎵 Audio";
+      }
+      if (text.includes("data:video/")) {
+        return "🎥 Video";
+      }
+
+      return text || "No messages yet";
     }
-    return (room.last_message as string) || "No messages yet";
+
+    // If last_message is a string
+    if (typeof room.last_message === "string") {
+      const lastMsg = room.last_message;
+
+      if (lastMsg.includes("data:image/")) {
+        return "📷 Image";
+      }
+      if (lastMsg.includes("data:audio/")) {
+        return "🎵 Audio";
+      }
+      if (lastMsg.includes("data:video/")) {
+        return "🎥 Video";
+      }
+
+      return lastMsg || "No messages yet";
+    }
+
+    // Default fallback
+    return "No messages yet";
   };
 
   const getAvatarForRoom = (room: ExtendedChatRoom) => {
@@ -828,6 +1152,18 @@ export default function ChatRoomsPage() {
         return File;
     }
   };
+
+  // Memoize filtered chat rooms
+  const filteredChatRooms = useMemo(
+    () => getFilteredChatRooms(),
+    [getFilteredChatRooms]
+  );
+
+  // Memoize grouped messages
+  const groupedMessages = useMemo(
+    () => groupMessagesByDate(messages),
+    [messages, groupMessagesByDate]
+  );
 
   return (
     <Layout>
@@ -925,7 +1261,7 @@ export default function ChatRoomsPage() {
               </div>
             ) : error ? (
               <div className="p-4 text-center text-red-600">{error}</div>
-            ) : getFilteredChatRooms().length === 0 ? (
+            ) : filteredChatRooms.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
                 {searchTerm
                   ? "No chat rooms found matching your search"
@@ -933,106 +1269,98 @@ export default function ChatRoomsPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {getFilteredChatRooms()
-                  ?.reverse()
-                  .map((room) => {
-                    const isActive = selectedRoom?.id === room.id;
-                    const isClosed = room.status === "closed";
-                    const unreadCount = getUnreadCount(room.id);
-                    const avatarInfo = getAvatarForRoom(room);
-                    const displayName = getRoomDisplayName(room);
-                    const updatedTime = getRoomUpdatedTime(room);
+                {filteredChatRooms?.reverse().map((room) => {
+                  const isActive = selectedRoom?.id === room.id;
+                  const isClosed = room.status === "closed";
+                  const unreadCount = getUnreadCount(room.id);
+                  const avatarInfo = getAvatarForRoom(room);
+                  const displayName = getRoomDisplayName(room);
+                  const updatedTime = getRoomUpdatedTime(room);
 
-                    return (
-                      <div
-                        key={room?.id || room?.room_id}
-                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                          isActive ? "bg-blue-50" : ""
-                        } ${isClosed ? "opacity-75" : ""}`}
-                        onClick={() => handleSelectRoom(room)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="relative flex-shrink-0">
-                            <div
-                              className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                                isClosed ? "bg-gray-100" : "bg-blue-100"
-                              }`}
-                            >
-                              {avatarInfo.type === "image" ? (
-                                <div className="relative w-full h-full">
-                                  <Image
-                                    src={
-                                      avatarInfo.url?.replace(
-                                        "wss://",
-                                        "https://"
-                                      ) || ""
-                                    }
-                                    alt={displayName}
-                                    fill
-                                    className="rounded-full object-cover"
-                                    sizes="48px"
-                                  />
-                                </div>
-                              ) : (
-                                <avatarInfo.icon
-                                  className={`h-6 w-6 ${
-                                    isClosed ? "text-gray-400" : "text-blue-600"
-                                  }`}
+                  return (
+                    <div
+                      key={room?.id || room?.room_id}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        isActive ? "bg-blue-50" : ""
+                      } ${isClosed ? "opacity-75" : ""}`}
+                      onClick={() => handleSelectRoom(room)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative flex-shrink-0">
+                          <div
+                            className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                              isClosed ? "bg-gray-100" : "bg-blue-100"
+                            }`}
+                          >
+                            {avatarInfo.type === "image" ? (
+                              <div className="relative w-full h-full">
+                                <Image
+                                  src={
+                                    avatarInfo.url?.replace(
+                                      "wss://",
+                                      "https://"
+                                    ) || ""
+                                  }
+                                  alt={displayName}
+                                  fill
+                                  className="rounded-full object-cover"
+                                  sizes="48px"
                                 />
+                              </div>
+                            ) : (
+                              <avatarInfo.icon
+                                className={`h-6 w-6 ${
+                                  isClosed ? "text-gray-400" : "text-blue-600"
+                                }`}
+                              />
+                            )}
+                          </div>
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                              {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-900 truncate">
+                                {displayName}
+                              </h3>
+                              {isClosed && (
+                                <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
+                                  Closed
+                                </span>
                               )}
                             </div>
+                          </div>
+
+                          <p className="text-sm text-gray-600 truncate mt-1">
+                            {getLastMessage(room)}
+                          </p>
+
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            {formatTimeDistance(updatedTime)}
+                          </span>
+
+                          <div className="flex items-center gap-2 mt-1">
                             {unreadCount > 0 && (
-                              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                                {unreadCount > 9 ? "9+" : unreadCount}
+                              <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                                {unreadCount} unread
+                              </span>
+                            )}
+                            {room.is_group && (
+                              <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-800 rounded-full">
+                                {room.members?.length || 0} members
                               </span>
                             )}
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-gray-900 truncate">
-                                  {displayName}
-                                </h3>
-                                {isClosed && (
-                                  <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
-                                    Closed
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-xs text-gray-500 whitespace-nowrap">
-                                {formatTimeDistance(updatedTime)}
-                              </span>
-                            </div>
-
-                            <p className="text-sm text-gray-600 truncate mt-1">
-                              {getLastMessage(room)}
-                            </p>
-
-                            {room.last_message &&
-                              typeof room.last_message === "object" && (
-                                <p className="text-xs text-gray-500 truncate">
-                                  From: {(room.last_message as any).sender}
-                                </p>
-                              )}
-
-                            <div className="flex items-center gap-2 mt-1">
-                              {unreadCount > 0 && (
-                                <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
-                                  {unreadCount} unread
-                                </span>
-                              )}
-                              {room.is_group && (
-                                <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-800 rounded-full">
-                                  {room.members?.length || 0} members
-                                </span>
-                              )}
-                            </div>
-                          </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1078,7 +1406,22 @@ export default function ChatRoomsPage() {
                             : "bg-blue-100"
                         }`}
                       >
-                        {selectedRoom.is_group ? (
+                        {selectedRoom.other_user_avatar ? (
+                          <div className="relative w-full h-full">
+                            <Image
+                              src={
+                                selectedRoom.other_user_avatar?.replace(
+                                  "wss://",
+                                  "https://"
+                                ) || ""
+                              }
+                              alt={getRoomDisplayName(selectedRoom)}
+                              fill
+                              className="rounded-full object-cover"
+                              sizes="40px"
+                            />
+                          </div>
+                        ) : selectedRoom.is_group ? (
                           <Users
                             className={`h-5 w-5 ${
                               selectedRoom.status === "closed"
@@ -1173,7 +1516,7 @@ export default function ChatRoomsPage() {
               </div>
 
               <div className="flex-1 overflow-hidden flex flex-col">
-                {loadingMessages ? (
+                {isSwitchingRoom || loadingMessages ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
@@ -1225,7 +1568,7 @@ export default function ChatRoomsPage() {
                       </div>
                     )}
 
-                    {groupMessagesByDate(messages).map((group) => (
+                    {groupedMessages.map((group) => (
                       <div key={group.label} className="mb-6">
                         <div className="flex items-center justify-center my-4">
                           <div className="px-4 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
@@ -1237,7 +1580,7 @@ export default function ChatRoomsPage() {
                           const isSystemMessage = message.sender?.id === 0;
                           const isStaffOrAdmin =
                             message.sender?.email === user?.email;
-                          const senderAvatar = message.sender?.profile_picture;
+                          const senderAvatar = selectedRoom.other_user_avatar;
                           const senderInitial =
                             message.sender?.name?.charAt(0)?.toUpperCase() ||
                             "U";
@@ -1256,7 +1599,7 @@ export default function ChatRoomsPage() {
                                 isStaffOrAdmin ? "justify-end" : ""
                               } ${isSystemMessage ? "justify-start" : ""}`}
                             >
-                              {!isStaffOrAdmin && !isSystemMessage && (
+                              {!isStaffOrAdmin && (
                                 <div className="flex-shrink-0">
                                   <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                                     {senderAvatar ? (
@@ -1281,11 +1624,7 @@ export default function ChatRoomsPage() {
                                 </div>
                               )}
 
-                              <div
-                                className={`${
-                                  isSystemMessage ? "max-w-full" : "max-w-[70%]"
-                                }`}
-                              >
+                              <div className={`${"max-w-[70%]"}`}>
                                 {!isStaffOrAdmin && !isSystemMessage && (
                                   <div className="flex items-center gap-2 mb-1">
                                     <p className="text-xs font-medium text-gray-700">
@@ -1312,61 +1651,132 @@ export default function ChatRoomsPage() {
                                       : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
                                   }`}
                                 >
-                                  {message.content && (
-                                    <p className="whitespace-pre-wrap mb-2">
-                                      {message.content}
-                                    </p>
-                                  )}
+                                  {message.content &&
+                                    (() => {
+                                      const content = message.content;
 
-                                  {message.attachments &&
-                                    message.attachments.map((attachment) => {
-                                      const FileIcon = getFileIcon(
-                                        attachment.file_type
-                                      );
-                                      return (
-                                        <div
-                                          key={attachment.id}
-                                          className="mt-2 first:mt-0"
-                                        >
-                                          {attachment.file_type === "image" && (
+                                      // Handle image data URLs - FIXED: Maintain aspect ratio
+                                      if (content.includes("data:image/")) {
+                                        return (
+                                          <div className="mt-2 first:mt-0">
                                             <div className="relative group">
-                                              <a
-                                                href={attachment.file_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block"
+                                              <div
+                                                className="relative rounded-lg overflow-hidden border border-gray-200 max-w-full cursor-pointer"
+                                                onClick={() => {
+                                                  // This actually works for viewing in new tab!
+                                                  const newTab = window.open(
+                                                    "",
+                                                    "_blank"
+                                                  );
+                                                  if (newTab) {
+                                                    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Image</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            background: #1a1a1a; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh;
+            padding: 20px;
+          }
+          img { 
+            max-width: 100%; 
+            max-height: 95vh; 
+            object-fit: contain; 
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          }
+        </style>
+      </head>
+      <body>
+        <img src="${content}" alt="Image" />
+      </body>
+      </html>
+    `;
+
+                                                    newTab.document.open();
+                                                    newTab.document.write(html);
+                                                    newTab.document.close();
+                                                  }
+                                                }}
                                               >
-                                                <div className="relative w-full max-w-md h-48 md:h-64 rounded-lg overflow-hidden border border-gray-200">
-                                                  <Image
-                                                    src={attachment.file_url}
-                                                    alt={
-                                                      attachment.file_name ||
-                                                      "Image"
-                                                    }
-                                                    fill
-                                                    className="object-cover hover:scale-105 transition-transform duration-200"
-                                                    sizes="(max-width: 768px) 100vw, 50vw"
+                                                {/* Remove fixed width/height, let image determine size */}
+                                                <div className="relative rounded-lg overflow-hidden border border-gray-200 max-w-full">
+                                                  {/* Use regular img tag for data URLs or Next Image without fill */}
+                                                  <img
+                                                    src={content}
+                                                    alt="Uploaded image"
+                                                    className="w-auto h-auto max-h-[400px] max-w-full object-contain hover:scale-105 transition-transform duration-200"
+                                                    style={{
+                                                      maxWidth: "100%",
+                                                      height: "auto",
+                                                    }}
+                                                    onLoad={(e) => {
+                                                      // Optional: Log image dimensions for debugging
+                                                      console.log(
+                                                        "Image loaded:",
+                                                        e.currentTarget
+                                                          .naturalWidth,
+                                                        "x",
+                                                        e.currentTarget
+                                                          .naturalHeight
+                                                      );
+                                                    }}
                                                   />
                                                 </div>
-                                              </a>
-                                              {attachment.file_name && (
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                  {attachment.file_name}
-                                                </p>
-                                              )}
+                                              </div>
                                             </div>
-                                          )}
-                                          {attachment.file_type === "video" && (
+                                          </div>
+                                        );
+                                      }
+
+                                      // Handle audio data URLs - FIXED: Make audio player wider
+                                      if (content.includes("data:audio/")) {
+                                        return (
+                                          <div className="mt-2 first:mt-0 w-full">
+                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 w-full min-w-[300px]">
+                                              <div className="flex items-center gap-3 mb-2">
+                                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                                  <Mic className="h-5 w-5 text-blue-600" />
+                                                </div>
+                                                <div className="flex-1">
+                                                  <p className="text-sm font-medium text-gray-900">
+                                                    Voice message
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              {/* Audio player takes full width with proper controls */}
+                                              <audio
+                                                controls
+                                                src={content}
+                                                className="w-full"
+                                                style={{ minWidth: "250px" }}
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+
+                                      // Handle video data URLs
+                                      if (content.includes("data:video/")) {
+                                        return (
+                                          <div className="mt-2 first:mt-0">
                                             <div className="relative group">
                                               <a
-                                                href={attachment.file_url}
+                                                href={content}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="block"
                                               >
-                                                <div className="relative w-full max-w-md h-48 md:h-64 rounded-lg overflow-hidden border border-gray-200 bg-black">
+                                                {/* Video with aspect ratio */}
+                                                <div className="relative rounded-lg overflow-hidden border border-gray-200 bg-black max-w-full aspect-video">
                                                   <video
-                                                    src={attachment.file_url}
+                                                    src={content}
                                                     className="w-full h-full object-contain"
                                                     controls
                                                     preload="metadata"
@@ -1378,79 +1788,18 @@ export default function ChatRoomsPage() {
                                                   </div>
                                                 </div>
                                               </a>
-                                              {attachment.file_name && (
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                  {attachment.file_name}
-                                                </p>
-                                              )}
                                             </div>
-                                          )}
-                                          {attachment.file_type === "audio" && (
-                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                              <div className="flex items-center gap-3 mb-2">
-                                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                                  <FileIcon className="h-5 w-5 text-blue-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                  <p className="text-sm font-medium text-gray-900">
-                                                    {attachment.file_name ||
-                                                      "Voice message"}
-                                                  </p>
-                                                  {attachment.file_size && (
-                                                    <p className="text-xs text-gray-500">
-                                                      {(
-                                                        attachment.file_size /
-                                                        1024 /
-                                                        1024
-                                                      ).toFixed(2)}{" "}
-                                                      MB
-                                                    </p>
-                                                  )}
-                                                </div>
-                                              </div>
-                                              <audio
-                                                controls
-                                                src={attachment.file_url}
-                                                className="w-full"
-                                              />
-                                            </div>
-                                          )}
-                                          {attachment.file_type ===
-                                            "document" && (
-                                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                              <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                                  <FileIcon className="h-5 w-5 text-gray-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                  <p className="text-sm font-medium text-gray-900">
-                                                    {attachment.file_name ||
-                                                      "Document"}
-                                                  </p>
-                                                  {attachment.file_size && (
-                                                    <p className="text-xs text-gray-500">
-                                                      {(
-                                                        attachment.file_size /
-                                                        1024
-                                                      ).toFixed(2)}{" "}
-                                                      KB
-                                                    </p>
-                                                  )}
-                                                </div>
-                                                <a
-                                                  href={attachment.file_url}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-blue-600 hover:text-blue-800"
-                                                >
-                                                  <File className="h-5 w-5" />
-                                                </a>
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
+                                          </div>
+                                        );
+                                      }
+
+                                      // Regular text content
+                                      return (
+                                        <p className="break-words whitespace-pre-wrap mb-2">
+                                          {content}
+                                        </p>
                                       );
-                                    })}
+                                    })()}
 
                                   {!isSystemMessage && (
                                     <div className="flex items-center justify-end gap-2 mt-2">
