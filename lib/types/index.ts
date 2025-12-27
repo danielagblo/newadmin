@@ -217,6 +217,10 @@ export interface CreateCouponForm {
   valid_until: string;
 }
 
+export interface BroadcastCouponRequest {
+  user_ids: number[];
+}
+
 // Subscription Types
 export interface Subscription {
   id: number;

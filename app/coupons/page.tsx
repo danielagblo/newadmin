@@ -1,23 +1,30 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
-import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { couponsApi } from '@/lib/api/coupons';
-import { Coupon, DISCOUNT_TYPES } from '@/lib/types';
+import { usersApi } from '@/lib/api/users';
+import { Coupon, DISCOUNT_TYPES, User } from '@/lib/types';
 import { format } from 'date-fns';
 import { Plus } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 export default function CouponsPage() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+  const [broadcastCoupon, setBroadcastCoupon] = useState<Coupon | null>(null);
+  const [broadcastUsers, setBroadcastUsers] = useState<User[]>([]);
+  const [broadcastSelected, setBroadcastSelected] = useState<number[]>([]);
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
   const [formData, setFormData] = useState<{
     code: string;
     description: string;
@@ -85,7 +92,7 @@ export default function CouponsPage() {
     // Convert discount_type - handle both API format (PERCENT/FIXED) and form format (percent/fixed)
     const discountTypeValue = (coupon as any).discount_type || coupon.discount_type;
     const discountType = (String(discountTypeValue).toLowerCase() === 'percent' ? 'percent' : 'fixed') as 'percent' | 'fixed';
-    
+
     setFormData({
       code: coupon.code,
       description: coupon.description || '',
@@ -116,6 +123,50 @@ export default function CouponsPage() {
       fetchCoupons();
     } catch (error) {
       console.error('Error expiring coupon:', error);
+    }
+  };
+
+  const openBroadcast = async (coupon: Coupon) => {
+    setBroadcastCoupon(coupon);
+    setIsBroadcastOpen(true);
+    setBroadcastLoading(true);
+    try {
+      const users = await usersApi.list('');
+      // Exclude staff and superusers from broadcast list
+      setBroadcastUsers(users.filter((u) => !u.is_staff && !u.is_superuser));
+      setBroadcastSelected([]);
+    } catch (err) {
+      console.error('Error fetching users for broadcast:', err);
+      setBroadcastUsers([]);
+    } finally {
+      setBroadcastLoading(false);
+    }
+  };
+
+  const toggleUser = (id: number) => {
+    setBroadcastSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleBroadcastSubmit = async () => {
+    if (!broadcastCoupon) return;
+    if (broadcastSelected.length === 0) {
+      window.alert('Please select at least one user to broadcast to');
+      return;
+    }
+    setBroadcastLoading(true);
+    try {
+      await couponsApi.broadcast(broadcastCoupon.id, broadcastSelected);
+      setIsBroadcastOpen(false);
+      setBroadcastCoupon(null);
+      fetchCoupons();
+      window.alert('Broadcast queued successfully');
+    } catch (err) {
+      console.error('Error broadcasting coupon:', err);
+      window.alert('Failed to broadcast coupon');
+    } finally {
+      setBroadcastLoading(false);
     }
   };
 
@@ -173,9 +224,8 @@ export default function CouponsPage() {
       key: 'is_active',
       header: 'Status',
       render: (coupon: Coupon) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          coupon.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
+        <span className={`px-2 py-1 rounded text-xs ${coupon.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
           {coupon.is_active ? 'Active' : 'Inactive'}
         </span>
       ),
@@ -206,15 +256,24 @@ export default function CouponsPage() {
             onDelete={handleDelete}
             isLoading={loading}
             actions={(coupon: Coupon) => (
-              coupon.is_active && (
+              <div className="flex items-center space-x-2">
+                {coupon.is_active && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExpire(coupon)}
+                  >
+                    Expire
+                  </Button>
+                )}
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
-                  onClick={() => handleExpire(coupon)}
+                  onClick={() => openBroadcast(coupon)}
                 >
-                  Expire
+                  Broadcast
                 </Button>
-              )
+              </div>
             )}
           />
         </div>
@@ -306,6 +365,56 @@ export default function CouponsPage() {
               <Button type="submit">Save</Button>
             </div>
           </form>
+        </Modal>
+        <Modal
+          isOpen={isBroadcastOpen}
+          onClose={() => setIsBroadcastOpen(false)}
+          title={broadcastCoupon ? `Broadcast ${broadcastCoupon.code}` : 'Broadcast Coupon'}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div>
+              <Input
+                label="Search users"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search by name or email"
+              />
+            </div>
+            <div className="max-h-64 overflow-auto border rounded p-2">
+              {broadcastLoading ? (
+                <div className="text-center py-6">Loading users...</div>
+              ) : broadcastUsers.length === 0 ? (
+                <div className="text-center py-6">No users found</div>
+              ) : (
+                broadcastUsers
+                  .filter((u) => {
+                    const q = userSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      (u.name || '').toLowerCase().includes(q) ||
+                      (u.email || '').toLowerCase().includes(q) ||
+                      (u.phone || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map((user) => (
+                    <label key={user.id} className="flex items-center space-x-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={broadcastSelected.includes(user.id)}
+                        onChange={() => toggleUser(user.id)}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm">{user.name || user.email} — {user.phone}</span>
+                    </label>
+                  ))
+              )}
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsBroadcastOpen(false)}>Cancel</Button>
+              <Button onClick={handleBroadcastSubmit} disabled={broadcastLoading}>{broadcastLoading ? 'Sending...' : 'Send Broadcast'}</Button>
+            </div>
+          </div>
         </Modal>
       </div>
     </Layout>
