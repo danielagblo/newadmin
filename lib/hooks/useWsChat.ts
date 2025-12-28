@@ -25,6 +25,7 @@ export type ChatRoom = {
   // Backend fields from your WebSocket message
   other_user_name?: string | null;
   other_user_avatar?: string | null;
+  avatar?: string | null;
   last_message?: {
     text: string;
     is_media: boolean;
@@ -81,6 +82,7 @@ export type UseWsChatReturn = {
   addLocalMessage: (roomId: string, msg: Message) => void;
   leaveRoom: (roomId: string) => void;
   closeAll: () => void;
+  lastUpdateTime: number;
 };
 
 function getWsBase() {
@@ -98,7 +100,8 @@ export default function useWsChat(): UseWsChatReturn {
       const raw = localStorage.getItem("oysloe_chatrooms");
       if (raw) {
         const parsed = JSON.parse(raw) as ChatRoom[];
-        if (Array.isArray(parsed) && parsed.length > 0) setChatrooms(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0)
+          setChatrooms(parsed.map(normalizeChatroomData));
       }
     } catch {
       // ignore
@@ -118,6 +121,8 @@ export default function useWsChat(): UseWsChatReturn {
   const roomHistoryRequested = useRef<Record<string, boolean>>({});
   const listClient = useRef<WebSocketClient | null>(null);
   const unreadClient = useRef<WebSocketClient | null>(null);
+  // Map of temp_id -> { roomKey, content, created }
+  const pendingByTempId = useRef<Record<string, { roomKey: string; content?: string; created?: number }>>({});
   useEffect(() => {
     return () => {
       // cleanup all clients on unmount
@@ -159,6 +164,8 @@ export default function useWsChat(): UseWsChatReturn {
     }
   }, [chatrooms]);
 
+  // messages are updated in onMessage handlers; no global dispatch here to avoid loops
+
   const token =
     typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
 
@@ -181,14 +188,14 @@ export default function useWsChat(): UseWsChatReturn {
 
   // Normalize a provided room identifier to the server-side `room_id` when possible.
   // Many APIs accept either the DB primary key (`id`) or the string `room_id`.
-  const normalizeRoomId = (roomId: string) => {
+  const normalizeRoomId = useCallback((roomId: string) => {
     const s = String(roomId);
     const found = chatrooms.find(
       (r) => String(r.id) === s || String(r.room_id) === s
     );
     if (found && found.room_id) return String(found.room_id);
     return s;
-  };
+  }, [chatrooms]);
 
   const normalizeIncomingMessage = (m: any): Message => {
     const id = (m?.id ?? m?.message_id ?? 0) as number;
@@ -246,7 +253,26 @@ export default function useWsChat(): UseWsChatReturn {
     } as Message;
   };
 
-  const getClientForRoom = (roomId: string) => {
+    // Normalize chatroom fields for UI display: prefer other user's name/avatar for 1:1 chats
+    const normalizeChatroomData = (r: any): ChatRoom => {
+      try {
+        const copy = { ...r } as ChatRoom;
+        const isGroup = !!(r as any).is_group;
+        if (!isGroup) {
+          const otherName =
+            (r as any).other_user_name ?? (r as any).other_user ?? null;
+          if (otherName) copy.name = String(otherName);
+        }
+        const otherAvatar =
+          (r as any).other_user_avatar ?? (r as any).other_avatar ?? null;
+        if (otherAvatar != null) copy.avatar = otherAvatar;
+        return copy;
+      } catch {
+        return r as ChatRoom;
+      }
+    };
+
+  const getClientForRoom = useCallback((roomId: string) => {
     const key = normalizeRoomId(roomId);
     if (roomClients.current[key]) return roomClients.current[key];
     const alt = String(roomId);
@@ -258,7 +284,121 @@ export default function useWsChat(): UseWsChatReturn {
       return roomClients.current[key];
     }
     return null;
-  };
+  }, [normalizeRoomId]);
+
+  const connectToChatroomsList = useCallback(() => {
+    // Clean up previous connection
+    if (listClient.current) {
+      try {
+        listClient.current.close();
+      } catch {}
+    }
+
+    const wsBase = getWsBase();
+    const url = `${wsBase}/chatrooms/`;
+
+    const client = new WebSocketClient(url, token, {
+      onOpen: () => {
+        console.log("Chatrooms WebSocket connected successfully");
+        try {
+          client.send({ type: "get_chatrooms" });
+        } catch (e) {
+          console.warn("Failed to send initial chatrooms request:", e);
+        }
+      },
+
+      onClose: (ev) => {
+        console.log("Chatrooms WebSocket closed:", ev?.code, ev?.reason);
+        listClient.current = null;
+        if (ev?.code !== 1000) {
+          console.log("Attempting to reconnect in 3 seconds...");
+          setTimeout(() => {
+            connectToChatroomsList();
+          }, 3000);
+        }
+      },
+
+      onError: (error) => {
+        console.error("Chatrooms WebSocket error:", error);
+        listClient.current = null;
+      },
+
+      onMessage: (data) => {
+        if (!data) return;
+        try {
+          // If server sends an array of rooms directly
+          if (Array.isArray(data)) {
+            const rooms = data.map(normalizeChatroomData);
+            setChatrooms(rooms);
+            try {
+              localStorage.setItem("oysloe_chatrooms", JSON.stringify(rooms));
+            } catch {}
+            return;
+          }
+
+          const t = (data as any).type;
+
+          // Full list payload: { type: 'chatrooms_list', chatrooms: [...] }
+          if (
+            t === "chatrooms_list" ||
+            t === "chatrooms" ||
+            t === "list" ||
+            Array.isArray((data as any).chatrooms) ||
+            Array.isArray((data as any).rooms)
+          ) {
+            const raw = (data as any).chatrooms || (data as any).rooms || (data as any).data || [];
+            if (Array.isArray(raw)) {
+              const rooms = raw.map(normalizeChatroomData);
+              setChatrooms(rooms);
+              try {
+                localStorage.setItem("oysloe_chatrooms", JSON.stringify(rooms));
+              } catch {}
+              // bump update time so consumers notice
+              setLastUpdateTime(Date.now());
+            }
+            return;
+          }
+
+          // Single-room update: { type: 'chatroom'|'chatroom_update', room: {...} }
+          if (t === "chatroom" || t === "chatroom_update" || t === "room_update") {
+            const raw = (data as any).room || (data as any).chatroom || (data as any).data || data;
+            const room = normalizeChatroomData(raw);
+            setChatrooms((prev) => {
+              const exists = prev.find(
+                (r) => String(r.id) === String((room as any).id) || String(r.room_id) === String((room as any).room_id)
+              );
+              let next: ChatRoom[];
+              if (exists) {
+                next = prev.map((r) =>
+                  String(r.id) === String((room as any).id) || String(r.room_id) === String((room as any).room_id) ? room : r
+                );
+              } else {
+                next = [room, ...prev];
+              }
+              try {
+                localStorage.setItem("oysloe_chatrooms", JSON.stringify(next));
+              } catch {}
+              setLastUpdateTime(Date.now());
+              return next;
+            });
+            return;
+          }
+        } catch (err) {
+          // ignore parsing errors
+        }
+      },
+    });
+
+    listClient.current = client;
+
+    try {
+      client.connect();
+      console.log("Chatrooms WebSocket connection initiated");
+    } catch (error) {
+      console.error("Failed to connect to chatrooms WebSocket:", error);
+      listClient.current = null;
+    }
+  }, [token]);
 
   const ensureRoomClient = useCallback(
     async (
@@ -285,6 +425,7 @@ export default function useWsChat(): UseWsChatReturn {
           if (found && (found as any).room_id) {
             key = String((found as any).room_id);
             // cache/update chatrooms list so future lookups succeed
+            const nf = normalizeChatroomData(found);
             setChatrooms((prev) => {
               const exists = prev.find(
                 (r) =>
@@ -292,9 +433,9 @@ export default function useWsChat(): UseWsChatReturn {
               );
               if (exists)
                 return prev.map((r) =>
-                  String(r.id) === String(found.id) ? found : r
+                  String(r.id) === String(found.id) ? nf : r
                 );
-              return [found, ...prev];
+              return [nf, ...prev];
             });
           } else {
             // Try to find a mapping from previously received WS data saved to localStorage
@@ -309,6 +450,7 @@ export default function useWsChat(): UseWsChatReturn {
                 );
                 if (cached && cached.room_id) {
                   key = String(cached.room_id);
+                  const nc = normalizeChatroomData(cached);
                   setChatrooms((prev) => {
                     const exists = prev.find(
                       (r) =>
@@ -317,9 +459,9 @@ export default function useWsChat(): UseWsChatReturn {
                     );
                     if (exists)
                       return prev.map((r) =>
-                        String(r.id) === String(cached.id) ? cached : r
+                        String(r.id) === String(cached.id) ? nc : r
                       );
-                    return [cached, ...prev];
+                    return [nc, ...prev];
                   });
                 } else {
                   // Ensure the chatrooms list WS is connected and wait briefly for it to populate
@@ -340,6 +482,7 @@ export default function useWsChat(): UseWsChatReturn {
                       );
                       if (cached2 && cached2.room_id) {
                         key = String(cached2.room_id);
+                        const nc2 = normalizeChatroomData(cached2);
                         setChatrooms((prev) => {
                           const exists = prev.find(
                             (r) =>
@@ -348,9 +491,9 @@ export default function useWsChat(): UseWsChatReturn {
                           );
                           if (exists)
                             return prev.map((r) =>
-                              String(r.id) === String(cached2.id) ? cached2 : r
+                              String(r.id) === String(cached2.id) ? nc2 : r
                             );
-                          return [cached2, ...prev];
+                          return [nc2, ...prev];
                         });
                       }
                     }
@@ -478,7 +621,18 @@ export default function useWsChat(): UseWsChatReturn {
                 : (data as any).messages || (data as any).data || [];
               if (Array.isArray(raw)) {
                 const msgs = raw.map(normalizeIncomingMessage);
-                setMessages((prev) => ({ ...prev, [key]: msgs }));
+                setMessages((prev) => {
+                  const next = { ...prev, [key]: msgs } as RoomMessages;
+                  try {
+                    const firstRoom = msgs && msgs[0] && msgs[0].room;
+                    const alt = firstRoom != null ? String(firstRoom) : null;
+                    if (alt && alt !== key) next[alt] = msgs;
+                  } catch {
+                    // ignore
+                  }
+                  try { setLastUpdateTime(Date.now()); } catch {}
+                  return next;
+                });
               }
               return;
             }
@@ -495,7 +649,18 @@ export default function useWsChat(): UseWsChatReturn {
                 [];
               if (Array.isArray(msgs)) {
                 const mapped = msgs.map(normalizeIncomingMessage);
-                setMessages((prev) => ({ ...prev, [key]: mapped }));
+                setMessages((prev) => {
+                  const next = { ...prev, [key]: mapped } as RoomMessages;
+                  try {
+                    const first = mapped && mapped[0] && mapped[0].room;
+                    const altKey = first != null ? String(first) : null;
+                    if (altKey && altKey !== key) next[altKey] = mapped;
+                  } catch {
+                    // ignore
+                  }
+                  try { setLastUpdateTime(Date.now()); } catch {}
+                  return next;
+                });
               }
               return;
             }
@@ -507,25 +672,19 @@ export default function useWsChat(): UseWsChatReturn {
             ) {
               // Normalize the incoming shape to our canonical Message
               const raw = data as any;
+              // DEBUG: log raw incoming for diagnosis
+              try { console.debug("useWsChat incoming.raw:", raw); } catch {}
               const incoming = normalizeIncomingMessage(raw) as Message & {
                 temp_id?: string;
               };
               // preserve server temp id echo if present
               if (raw?.temp_id) (incoming as any).temp_id = raw.temp_id;
+              try { console.debug("useWsChat incoming.norm:", incoming); } catch {}
               setMessages((prev) => {
                 const list = prev[key] || [];
+                try { console.debug("useWsChat existingList:", list.map((m: any) => ({ id: m.id, temp: (m as any).__temp_id || (m as any).temp_id, content: m.content }))); } catch {}
 
-                // If `id` exists, dedupe by id first
-                if ((incoming as any).id) {
-                  if (
-                    list.find(
-                      (m) => String(m.id) === String((incoming as any).id)
-                    )
-                  )
-                    return prev;
-                }
-
-                // If server echoed our temp_id, replace the optimistic placeholder
+                // If server echoed our temp_id, replace the optimistic placeholder FIRST (highest priority)
                 const tempId = (incoming as any).temp_id;
                 if (tempId) {
                   const byTemp = list.findIndex(
@@ -533,43 +692,135 @@ export default function useWsChat(): UseWsChatReturn {
                       ((m as any).__temp_id || (m as any).temp_id) === tempId
                   );
                   if (byTemp !== -1) {
+                    try { console.debug("useWsChat: matched by temp_id", tempId); } catch {}
                     const newList = [...list];
-                    newList[byTemp] = incoming;
+                    // remove pending mapping for this temp id
+                    try { delete pendingByTempId.current[String(tempId)]; } catch {}
+                    newList[byTemp] = incoming; // Server version replaces optimistic
+                    try { setLastUpdateTime(Date.now()); } catch {}
                     return { ...prev, [key]: newList };
                   }
                 }
 
-                // dedupe by content+sender+time (within 5s) to catch optimistic echoes
+                // Aggressive fuzzy match: content+sender (BEFORE checking ID to catch optimistic)
+                // This prevents server echo from being added as a new message if it matches recent optimistic
                 const incomingTime = incoming.created_at
                   ? new Date(incoming.created_at).getTime()
                   : 0;
-                const likelyIndex = list.findIndex((m) => {
+                const fuzzyIndex = list.findIndex((m) => {
                   if (!m || !incoming) return false;
+                  // Same sender check
                   if (
                     m.sender?.id &&
                     incoming.sender?.id &&
                     m.sender.id !== incoming.sender.id
                   )
                     return false;
+                  // Same content check
                   if (m.content !== incoming.content) return false;
+                  // Within 5 seconds check
                   const mTime = m.created_at
                     ? new Date(m.created_at).getTime()
                     : 0;
-                  return Math.abs(mTime - incomingTime) <= 5000; // 5 seconds
+                  return Math.abs(mTime - incomingTime) <= 5000;
                 });
-                if (likelyIndex !== -1) {
-                  const existing = list[likelyIndex] as any;
-                  if (existing && existing.__optimistic) {
-                    const newList = [...list];
-                    newList[likelyIndex] = incoming;
-                    return { ...prev, [key]: newList };
-                  }
-                  // otherwise assume it's a duplicate and ignore incoming
-                  return prev;
+                if (fuzzyIndex !== -1) {
+                  try { console.debug("useWsChat: matched by fuzzyIndex", fuzzyIndex); } catch {}
+                  // Replace the existing message with server version (more authoritative)
+                  const existing = list[fuzzyIndex] as any;
+                  try {
+                    const et = existing && ((existing as any).__temp_id || (existing as any).temp_id);
+                    if (et) delete pendingByTempId.current[String(et)];
+                  } catch {}
+                  const newList = [...list];
+                  newList[fuzzyIndex] = incoming;
+                  try { setLastUpdateTime(Date.now()); } catch {}
+                  return { ...prev, [key]: newList };
                 }
 
-                return { ...prev, [key]: [...list, incoming] };
+                // If `id` exists and no fuzzy match found, dedupe by id
+                if ((incoming as any).id && (incoming as any).id > 0) {
+                  const byId = list.findIndex(
+                    (m) => String(m.id) === String((incoming as any).id)
+                  );
+                  if (byId !== -1) {
+                    // Replace existing with server version
+                    const updated = [...list];
+                    updated[byId] = incoming;
+                    try { setLastUpdateTime(Date.now()); } catch {}
+                    return { ...prev, [key]: updated };
+                  }
+
+                  // If we have any optimistic placeholder that matches (temp_id or fuzzy/substring),
+                  // replace it instead of adding a new message to avoid duplication.
+                  const optimisticIndex = list.findIndex((m) => {
+                    if (!m) return false;
+                    // Match explicit temp ids
+                    const existingTemp = (m as any).__temp_id || (m as any).temp_id;
+                    if (existingTemp && (incoming as any).temp_id && String(existingTemp) === String((incoming as any).temp_id)) return true;
+                    // Match messages marked optimistic
+                    if ((m as any).__optimistic) {
+                      try {
+                        // sender must match if known
+                        if (m.sender?.id && incoming.sender?.id && String(m.sender.id) !== String(incoming.sender?.id)) return false;
+                        const a = String((m.content || "").trim());
+                        const b = String((incoming.content || "").trim());
+                        if (a === b) return true;
+                        // substring checks for slight server normalization differences
+                        if (a && b && (a.length > 10 ? b.includes(a) : b.includes(a) || a.includes(b))) return true;
+                        // time window
+                        const mTime = m.created_at ? new Date(m.created_at).getTime() : 0;
+                        const incomingTime = incoming.created_at ? new Date(incoming.created_at).getTime() : 0;
+                        if (Math.abs(mTime - incomingTime) <= 10000) return true;
+                      } catch {
+                        return false;
+                      }
+                    }
+                    return false;
+                  });
+                  if (optimisticIndex !== -1) {
+                    try { console.debug("useWsChat: replacing optimistic at index", optimisticIndex); } catch {}
+                    const updated = [...list];
+                    try {
+                      const ex = updated[optimisticIndex] as any;
+                      const et = ex && ((ex as any).__temp_id || (ex as any).temp_id);
+                      if (et) delete pendingByTempId.current[String(et)];
+                    } catch {}
+                    updated[optimisticIndex] = incoming;
+                    try { setLastUpdateTime(Date.now()); } catch {}
+                    return { ...prev, [key]: updated };
+                  }
+
+                  // New message from server with valid ID — add it
+                  const newPrev = { ...prev, [key]: [...list, incoming] } as RoomMessages;
+                  try {
+                    const incomingRoom = incoming.room != null ? String(incoming.room) : null;
+                    if (incomingRoom && incomingRoom !== key) {
+                      const altList = newPrev[incomingRoom] || [];
+                      if (altList !== newPrev[key]) newPrev[incomingRoom] = [...altList, incoming];
+                    }
+                  } catch {
+                    // ignore
+                  }
+                  try { setLastUpdateTime(Date.now()); } catch {}
+                  return newPrev;
+                }
+
+                // No match — add as genuinely new message (should not happen if dedup above worked)
+                const newPrev = { ...prev, [key]: [...list, incoming] } as RoomMessages;
+                try {
+                  const incomingRoom = incoming.room != null ? String(incoming.room) : null;
+                  if (incomingRoom && incomingRoom !== key) {
+                    const altList = newPrev[incomingRoom] || [];
+                    // avoid duplicating if same array reference
+                    if (altList !== newPrev[key]) newPrev[incomingRoom] = [...altList, incoming];
+                  }
+                } catch {
+                  // ignore
+                }
+                return newPrev;
               });
+              try { setLastUpdateTime(Date.now()); } catch {}
               // on new message, clear typing for sender (they sent so not typing now)
               try {
                 const sid = (incoming as any).sender?.id ?? null;
@@ -635,7 +886,7 @@ export default function useWsChat(): UseWsChatReturn {
 
       return key;
     },
-    [token, chatrooms]
+    [token, chatrooms, connectToChatroomsList, messages, normalizeRoomId]
   );
 
   const connectToRoom = useCallback(
@@ -652,533 +903,7 @@ export default function useWsChat(): UseWsChatReturn {
     },
     [ensureRoomClient]
   );
-
-  const connectToChatroomsList = useCallback(() => {
-    // Check if already connected
-    if (listClient.current?.isOpen()) {
-      console.log("Chatrooms WebSocket already connected");
-      return;
-    }
-
-    // Clean up previous connection
-    if (listClient.current) {
-      try {
-        listClient.current.close();
-      } catch {}
-    }
-
-    const wsBase = getWsBase();
-    const url = `${wsBase}/chatrooms/`;
-
-    const client = new WebSocketClient(url, token, {
-      // ✅ ADD THESE MISSING HANDLERS:
-      onOpen: () => {
-        console.log("Chatrooms WebSocket connected successfully");
-        // Optional: Send initial request for chatrooms data
-        try {
-          client.send({ type: "get_chatrooms" });
-        } catch (e) {
-          console.warn("Failed to send initial chatrooms request:", e);
-        }
-      },
-
-      onClose: (ev) => {
-        console.log("Chatrooms WebSocket closed:", ev?.code, ev?.reason);
-
-        // Clear the client reference
-        listClient.current = null;
-
-        // Optional: Reconnect after delay if not intentional close
-        if (ev?.code !== 1000) {
-          // 1000 = normal closure
-          console.log("Attempting to reconnect in 3 seconds...");
-          setTimeout(() => {
-            connectToChatroomsList();
-          }, 3000);
-        }
-      },
-
-      onError: (error) => {
-        console.error("Chatrooms WebSocket error:", error);
-        // Clear client reference on error
-        listClient.current = null;
-      },
-
-      onMessage: (data) => {
-        console.log("Received chatrooms data:", data);
-        if (!data) return;
-
-        // Your helper functions first
-        const normalizeAvatar = (src?: string | null) => {
-          try {
-            if (!src) return null;
-            if (/^https?:\/\//i.test(src)) return src;
-            if (src.startsWith("//")) return window.location.protocol + src;
-            const apiRaw =
-              ((WSS_URL + WSS_BASE) as string) ||
-              "https://api.oysloe.com/api-v1";
-            let apiOrigin = "";
-            try {
-              apiOrigin = new URL(apiRaw).origin;
-            } catch {
-              apiOrigin = apiRaw.replace(/\/+$/, "");
-            }
-            if (src.startsWith("/")) {
-              if (
-                /^\/assets\/avatars\//i.test(src) ||
-                /^\/media\//i.test(src) ||
-                /^\/uploads\//i.test(src)
-              ) {
-                return apiOrigin + src;
-              }
-              return (
-                (typeof window !== "undefined" ? window.location.origin : "") +
-                src
-              );
-            }
-            return src;
-          } catch {
-            return src ?? null;
-          }
-        };
-
-        const getStoredUserId = (): number | null => {
-          try {
-            const raw = localStorage.getItem("user");
-            if (!raw) return null;
-            const parsed = JSON.parse(raw) as any;
-            if (parsed == null) return null;
-            if (typeof parsed.id === "number") return parsed.id;
-            if (typeof parsed.user_id === "number") return parsed.user_id;
-            return null;
-          } catch (e) {
-            return null;
-          }
-        };
-
-        const deriveOtherFromMembers = (r: any) => {
-          try {
-            if (!r) return r;
-            const curId = getStoredUserId();
-            const members = Array.isArray(r.members) ? r.members : [];
-            // prefer member whose id !== current user id
-            let other = members.find(
-              (m: any) => m && (curId == null || Number(m.id) !== Number(curId))
-            );
-            if (!other && members.length > 0) other = members[0];
-            if (!other) return r;
-            const avatar =
-              other.avatar ??
-              other.user_avatar ??
-              other.photo ??
-              other.image ??
-              null;
-            const name =
-              other.name ??
-              other.full_name ??
-              other.username ??
-              other.display_name ??
-              null;
-            return {
-              ...r,
-              other_user_avatar: normalizeAvatar(avatar) || avatar || null,
-              other_user_name: name || null,
-            };
-          } catch {
-            return r;
-          }
-        };
-
-        // ========== MAIN MESSAGE HANDLING ==========
-
-        // 1. Handle "chatrooms_list" type (what you're receiving)
-        if (
-          (data as any).type === "chatrooms_list" &&
-          Array.isArray((data as any).chatrooms)
-        ) {
-          console.log(
-            "Processing chatrooms_list with",
-            (data as any).chatrooms.length,
-            "chatrooms"
-          );
-
-          const chatroomsData = (data as any).chatrooms;
-
-          try {
-            const mapped = chatroomsData.map((r: any) => {
-              // Check if backend already provides other_user and other_user_avatar
-              const hasOtherUserInfo =
-                r.other_user !== undefined || r.other_user_avatar !== undefined;
-
-              if (hasOtherUserInfo) {
-                // Use backend-provided other_user info
-                return {
-                  id: r.id,
-                  room_id: r.room_id,
-                  name: r.name,
-                  is_group: r.is_group,
-                  members: r.members || [],
-                  created_at: r.created_at,
-                  total_unread: r.unread || 0,
-                  // Map backend fields to expected format
-                  other_user_name: r.other_user || null,
-                  other_user_avatar:
-                    normalizeAvatar(r.other_user_avatar) || null,
-                  // Preserve last_message if available
-                  last_message: r.last_message || null,
-                  // Additional fields from backend
-                  product_id: r.product_id || "",
-                  ad_name: r.ad_name || "",
-                  ad_image: r.ad_image || "",
-                } as any;
-              } else {
-                // Fallback to deriving from members
-                const withOther = deriveOtherFromMembers(r);
-                return {
-                  ...withOther,
-                  id: r.id,
-                  room_id: r.room_id,
-                  name: r.name,
-                  is_group: r.is_group,
-                  members: r.members || [],
-                  created_at: r.created_at,
-                  total_unread: r.unread || 0,
-                  other_user_avatar:
-                    normalizeAvatar((withOther as any).other_user_avatar) ||
-                    null,
-                  last_message: r.last_message || null,
-                  product_id: r.product_id || "",
-                  ad_name: r.ad_name || "",
-                  ad_image: r.ad_image || "",
-                };
-              }
-            });
-
-            console.log("Mapped chatrooms:", mapped);
-            setChatrooms(mapped as ChatRoom[]);
-
-            // Save to localStorage for caching
-            try {
-              localStorage.setItem("oysloe_chatrooms", JSON.stringify(mapped));
-            } catch (e) {
-              console.warn("Failed to save chatrooms to localStorage:", e);
-            }
-
-            // Apply avatars to existing messages
-            try {
-              const avatarMap: Record<string, string> = {};
-              mapped.forEach((r: any) => {
-                const key = String(r.room_id ?? r.id ?? "");
-                if (!key) return;
-                const av = normalizeAvatar(r.other_user_avatar) || null;
-                if (av) avatarMap[key] = av;
-              });
-
-              if (Object.keys(avatarMap).length > 0) {
-                const getStoredUserIdLocal = getStoredUserId;
-                setMessages((prev) => {
-                  const next: typeof prev = { ...prev };
-                  Object.keys(avatarMap).forEach((rk) => {
-                    const list = next[rk];
-                    if (!Array.isArray(list)) return;
-                    const curId = getStoredUserIdLocal();
-                    next[rk] = list.map((m) => {
-                      try {
-                        if (m && m.sender && m.sender.id != null) {
-                          if (
-                            curId == null ||
-                            String(m.sender.id) !== String(curId)
-                          ) {
-                            return {
-                              ...m,
-                              sender: { ...m.sender, avatar: avatarMap[rk] },
-                            } as any;
-                          }
-                          return m;
-                        }
-                        return {
-                          ...m,
-                          other_user_avatar: avatarMap[rk],
-                        } as any;
-                      } catch {
-                        return m;
-                      }
-                    });
-                  });
-                  return next;
-                });
-              }
-            } catch (e) {
-              console.warn("Failed to apply avatars to messages:", e);
-            }
-
-            return;
-          } catch (error) {
-            console.error("Error processing chatrooms_list:", error);
-          }
-        }
-
-        // 2. Handle "rooms_update" for incremental updates
-        if (
-          (data as any).type === "rooms_update" &&
-          Array.isArray((data as any).rooms)
-        ) {
-          console.log("Processing rooms_update");
-          try {
-            const mapped = ((data as any).rooms as ChatRoom[]).map((r) => {
-              const withOther = deriveOtherFromMembers(r as any);
-              return {
-                ...withOther,
-                other_user_avatar:
-                  normalizeAvatar((withOther as any).other_user_avatar) ||
-                  (withOther as any).other_user_avatar ||
-                  null,
-              };
-            });
-            setChatrooms((prev) => {
-              const updated = mapped as ChatRoom[];
-              try {
-                localStorage.setItem(
-                  "oysloe_chatrooms",
-                  JSON.stringify(updated)
-                );
-              } catch {}
-              return updated;
-            });
-
-            // Apply avatars to existing messages for updated rooms
-            try {
-              const avatarMap: Record<string, string> = {};
-              mapped.forEach((r: any) => {
-                const key = String(r.room_id ?? r.id ?? r.name ?? "");
-                if (!key) return;
-                const av =
-                  normalizeAvatar((r as any).other_user_avatar) ||
-                  (r as any).other_user_avatar ||
-                  null;
-                if (av) avatarMap[key] = av;
-              });
-              if (Object.keys(avatarMap).length > 0) {
-                const getStoredUserIdLocal = getStoredUserId;
-                setMessages((prevMsgs) => {
-                  const nextMsgs = { ...prevMsgs };
-                  Object.keys(avatarMap).forEach((rk) => {
-                    const list = nextMsgs[rk];
-                    if (!Array.isArray(list)) return;
-                    const curId = getStoredUserIdLocal();
-                    nextMsgs[rk] = list.map((m) => {
-                      try {
-                        if (m && m.sender && m.sender.id != null) {
-                          if (
-                            curId == null ||
-                            String(m.sender.id) !== String(curId)
-                          ) {
-                            return {
-                              ...m,
-                              sender: { ...m.sender, avatar: avatarMap[rk] },
-                            } as any;
-                          }
-                          return m;
-                        }
-                        return {
-                          ...m,
-                          other_user_avatar: avatarMap[rk],
-                        } as any;
-                      } catch {
-                        return m;
-                      }
-                    });
-                  });
-                  return nextMsgs;
-                });
-              }
-            } catch (e) {
-              console.warn("Failed to apply avatars from rooms_update:", e);
-            }
-            return;
-          } catch (error) {
-            console.error("Error processing rooms_update:", error);
-          }
-        }
-
-        // 3. Handle single room update
-        if (
-          (data as any).type === "room_update" &&
-          ((data as any).room_id || (data as any).id)
-        ) {
-          console.log("Processing room_update");
-          const updated = data as ChatRoom;
-          const updatedWithOther = deriveOtherFromMembers(updated as any);
-          const updatedNormalized = {
-            ...updatedWithOther,
-            other_user_avatar: ((): any => {
-              try {
-                const v = (updatedWithOther as any).other_user_avatar;
-                return normalizeAvatar(v) || v || null;
-              } catch {
-                return (updatedWithOther as any).other_user_avatar || null;
-              }
-            })(),
-          } as ChatRoom;
-
-          setChatrooms((prev) => {
-            const found = prev.find(
-              (r) =>
-                String(r.id) === String(updated.id) ||
-                r.room_id === (updated as any).room_id
-            );
-            const next = !found
-              ? [updatedNormalized, ...prev]
-              : prev.map((r) =>
-                  String(r.id) === String(updated.id) ? updatedNormalized : r
-                );
-
-            // Save to localStorage
-            try {
-              localStorage.setItem("oysloe_chatrooms", JSON.stringify(next));
-            } catch {}
-
-            // Apply avatar for this single updated room
-            try {
-              const key = String(
-                updatedNormalized.room_id ??
-                  updatedNormalized.id ??
-                  updatedNormalized.name ??
-                  ""
-              );
-              const av =
-                normalizeAvatar((updatedNormalized as any).other_user_avatar) ||
-                (updatedNormalized as any).other_user_avatar ||
-                null;
-              if (key && av) {
-                const getStoredUserIdLocal = getStoredUserId;
-                setMessages((prevMsgs) => {
-                  const nextMsgs = { ...prevMsgs };
-                  const list = nextMsgs[key];
-                  if (Array.isArray(list)) {
-                    const curId = getStoredUserIdLocal();
-                    nextMsgs[key] = list.map((m) => {
-                      try {
-                        if (m && m.sender && m.sender.id != null) {
-                          if (
-                            curId == null ||
-                            String(m.sender.id) !== String(curId)
-                          ) {
-                            return {
-                              ...m,
-                              sender: { ...m.sender, avatar: av },
-                            } as any;
-                          }
-                          return m;
-                        }
-                        return { ...m, other_user_avatar: av } as any;
-                      } catch {
-                        return m;
-                      }
-                    });
-                  }
-                  return nextMsgs;
-                });
-              }
-            } catch (e) {
-              console.warn("Failed to apply avatar from room_update:", e);
-            }
-
-            return next;
-          });
-          return;
-        }
-
-        // 4. Fallback: Direct array (for backward compatibility)
-        if (Array.isArray(data)) {
-          console.log("Processing direct array chatrooms");
-          try {
-            const mapped = (data as ChatRoom[]).map((r) => {
-              const withOther = deriveOtherFromMembers(r as any);
-              return {
-                ...withOther,
-                other_user_avatar:
-                  normalizeAvatar((withOther as any).other_user_avatar) ||
-                  (withOther as any).other_user_avatar ||
-                  null,
-              };
-            });
-            setChatrooms(mapped as ChatRoom[]);
-
-            try {
-              localStorage.setItem("oysloe_chatrooms", JSON.stringify(mapped));
-            } catch {}
-
-            // Apply avatars
-            try {
-              const avatarMap: Record<string, string> = {};
-              mapped.forEach((r: any) => {
-                const key = String(r.room_id ?? r.id ?? r.name ?? "");
-                if (!key) return;
-                const av =
-                  normalizeAvatar((r as any).other_user_avatar) ||
-                  (r as any).other_user_avatar ||
-                  null;
-                if (av) avatarMap[key] = av;
-              });
-              if (Object.keys(avatarMap).length > 0) {
-                const getStoredUserIdLocal = getStoredUserId;
-                setMessages((prev) => {
-                  const next: typeof prev = { ...prev };
-                  Object.keys(avatarMap).forEach((rk) => {
-                    const list = next[rk];
-                    if (!Array.isArray(list)) return;
-                    const curId = getStoredUserIdLocal();
-                    next[rk] = list.map((m) => {
-                      try {
-                        if (m && m.sender && m.sender.id != null) {
-                          if (
-                            curId == null ||
-                            String(m.sender.id) !== String(curId)
-                          ) {
-                            return {
-                              ...m,
-                              sender: { ...m.sender, avatar: avatarMap[rk] },
-                            } as any;
-                          }
-                          return m;
-                        }
-                        return {
-                          ...m,
-                          other_user_avatar: avatarMap[rk],
-                        } as any;
-                      } catch {
-                        return m;
-                      }
-                    });
-                  });
-                  return next;
-                });
-              }
-            } catch (e) {
-              console.warn("Failed to apply avatars from direct array:", e);
-            }
-          } catch (error) {
-            console.error("Error processing direct array:", error);
-          }
-          return;
-        }
-
-        // 5. Log unhandled message types
-        console.log("Unhandled message type:", (data as any).type, data);
-      },
-    });
-
-    listClient.current = client;
-
-    try {
-      client.connect();
-      console.log("Chatrooms WebSocket connection initiated");
-    } catch (error) {
-      console.error("Failed to connect to chatrooms WebSocket:", error);
-      listClient.current = null;
-    }
-  }, [token]);
+  
 
   const connectToUnreadCount = useCallback(() => {
     if (unreadClient.current?.isOpen()) return;
@@ -1223,6 +948,9 @@ export default function useWsChat(): UseWsChatReturn {
       const key = normalizeRoomId(roomId);
       console.log("Normalized room key:", key);
 
+      // Use existing room connection if available
+      const existingClient = roomClients.current[key];
+      
       let messageToSend = text;
       let isMedia = false;
       let fileType = "";
@@ -1235,7 +963,6 @@ export default function useWsChat(): UseWsChatReturn {
         messageToSend = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => {
-            // Send the FULL data URL including data:image/...;base64, prefix
             const result = reader.result as string;
             console.log("File converted to data URL, length:", result.length);
             resolve(result);
@@ -1252,51 +979,58 @@ export default function useWsChat(): UseWsChatReturn {
         fileName = file instanceof File ? file.name : "audio.webm";
       }
 
-      // Build the WebSocket URL
+      const payload: any = {
+        type: "chat_message",
+        message: messageToSend,
+        temp_id: tempId,
+        is_media: isMedia,
+      };
+
+      if (file) {
+        payload.file_name = fileName;
+        payload.file_type = fileType;
+        payload.file_size = file.size;
+      }
+      // If we have an existing connected client, prefer using it.
+      if (existingClient) {
+        try {
+          console.log("sendMessage: existing client found, isOpen=", existingClient.isOpen());
+          try {
+            existingClient.connect();
+          } catch {}
+
+          existingClient.send(payload);
+          console.log("Message queued/sent via existing WebSocket connection");
+          // Do NOT retry via a temporary socket here — avoid double-send if server doesn't echo temp_id.
+          return Promise.resolve();
+        } catch (error) {
+          console.error("Failed to send via existing connection:", error);
+          // fall through to fallback only if send throws
+        }
+      }
+
+      // Fallback: Create temporary connection if no existing client or no echo
       const wsBase = getWsBase();
       const encoded = encodeURIComponent(key);
       const url = `${wsBase}/chat/${encoded}/?token=${token}`;
-      console.log("WebSocket URL for sending:", url);
+      console.log("Creating temporary WebSocket for sending:", url);
 
-      // Wrap in a Promise to handle async WebSocket connection
       return new Promise<void>((resolve, reject) => {
-        // Create a NEW WebSocketClient JUST for sending
         const client = new WebSocketClient(url, token, {
           onOpen: () => {
-            console.log("sendMessage WebSocket connected");
+            console.log("Temporary sendMessage WebSocket connected");
 
             try {
-              const payload = {
-                type: "chat_message",
-                message: messageToSend,
-                temp_id: tempId,
-              };
-
-              // Add file metadata if it's a file
-              if (file) {
-                Object.assign(payload, {
-                  file_name: fileName,
-                  file_type: fileType,
-                  file_size: file.size,
-                  is_media: true,
-                });
-                console.log("Sending file as data URL");
-              } else {
-                Object.assign(payload, { is_media: false });
-                console.log("Sending text message");
-              }
-
               client.send(payload);
-              console.log("Message sent via WebSocket");
+              console.log("Message sent via temporary WebSocket");
 
-              // Close after sending
               setTimeout(() => {
                 try {
                   client.close();
                 } catch (err) {
                   console.error("Error closing client:", err);
                 }
-                resolve(); // Resolve the promise
+                resolve();
               }, 100);
             } catch (error) {
               console.error("Failed to send message:", error);
@@ -1305,9 +1039,7 @@ export default function useWsChat(): UseWsChatReturn {
           },
 
           onClose: (ev) => {
-            console.log("sendMessage WebSocket closed:", ev?.code, ev?.reason);
-            // If we haven't resolved/rejected yet, resolve now
-            // (connection might close after sending successfully)
+            console.log("Temporary sendMessage WebSocket closed:", ev?.code, ev?.reason);
           },
 
           onError: (error) => {
@@ -1325,28 +1057,13 @@ export default function useWsChat(): UseWsChatReturn {
           // Connect the WebSocket
           client.connect();
           console.log("sendMessage WebSocket connection initiated");
-
-          // Set a timeout for connection
-          const timeout = setTimeout(() => {
-            if (!client.isOpen()) {
-              reject(new Error("WebSocket connection timeout"));
-              try {
-                client.close();
-              } catch {}
-            }
-          }, 5000); // 5 second timeout
-
-          // Clean up timeout on success
-          // client.onOpen = () => {
-          //   clearTimeout(timeout);
-          // };
         } catch (error) {
           console.error("Failed to create WebSocket for sending:", error);
           reject(new Error(`WebSocket send failed: ${error}`));
         }
       });
     },
-    [token]
+    [token, normalizeRoomId]
   );
 
   // Note: use `sendTypingOptimistic` which also updates local typing state.
@@ -1376,7 +1093,7 @@ export default function useWsChat(): UseWsChatReturn {
         // ignore
       }
     },
-    []
+    [getClientForRoom, normalizeRoomId]
   );
 
   const markAsRead = useCallback(async (roomId: string) => {
@@ -1414,12 +1131,12 @@ export default function useWsChat(): UseWsChatReturn {
     } catch {
       // ignore
     }
-  }, []);
+  }, [chatrooms, getClientForRoom, normalizeRoomId]);
 
   const isRoomConnected = useCallback(
     (roomId: string) =>
       !!getClientForRoom(roomId) && getClientForRoom(roomId)!.isOpen(),
-    []
+    [getClientForRoom]
   );
 
   const addLocalMessage = useCallback((roomId: string, msg: Message) => {
@@ -1442,6 +1159,7 @@ export default function useWsChat(): UseWsChatReturn {
       )
         return prev;
       // fuzzy dedupe: content+sender+time within 2s
+      // fuzzy dedupe: content+sender+time within 5s
       const msgTime = msg.created_at
         ? new Date(msg.created_at).getTime()
         : Date.now();
@@ -1453,6 +1171,7 @@ export default function useWsChat(): UseWsChatReturn {
         const mTime = m.created_at ? new Date(m.created_at).getTime() : 0;
         return Math.abs(mTime - msgTime) <= 5000;
       });
+      // Check for likely duplicates
       if (likelyIndex !== -1) return prev;
       // mark optimistic messages so they can be replaced when server responds
       (msg as any).__optimistic = true;
@@ -1460,9 +1179,35 @@ export default function useWsChat(): UseWsChatReturn {
       if ((msg as any).temp_id && !(msg as any).__temp_id) {
         (msg as any).__temp_id = (msg as any).temp_id;
       }
-      return { ...prev, [k]: [...list, msg] };
+      // track pending optimistic messages by temp_id for quick reconciliation
+      try {
+        const t = (msg as any).__temp_id || (msg as any).temp_id;
+        if (t)
+          pendingByTempId.current[String(t)] = {
+            roomKey: k,
+            content: String(msg.content || ""),
+            created: msg.created_at ? new Date(msg.created_at).getTime() : Date.now(),
+          };
+      } catch {
+        // ignore
+      }
+      const primaryList = [...list, msg];
+      const next = { ...prev, [k]: primaryList } as RoomMessages;
+      try {
+        const alt = msg.room != null ? String(msg.room) : null;
+        if (alt && alt !== k) {
+          const altList = next[alt] || [];
+          if (!altList.find((m) => String(m.id) === String(msg.id) || ((m as any).__temp_id || (m as any).temp_id) === ((msg as any).__temp_id || (msg as any).temp_id))) {
+            next[alt] = [...altList, msg];
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return next;
     });
-  }, []);
+    try { setLastUpdateTime(Date.now()); } catch {}
+  }, [normalizeRoomId]);
 
   const closeAll = useCallback(() => {
     Object.values(roomClients.current).forEach((c) => c?.close());
@@ -1485,7 +1230,7 @@ export default function useWsChat(): UseWsChatReturn {
     roomClients.current[key] = null;
     if (alt !== key) roomClients.current[alt] = null;
     roomConnecting.current[key] = false;
-  }, []);
+  }, [normalizeRoomId]);
 
   return {
     messages,
@@ -1503,5 +1248,6 @@ export default function useWsChat(): UseWsChatReturn {
     addLocalMessage,
     leaveRoom,
     closeAll,
+    lastUpdateTime,
   };
 }

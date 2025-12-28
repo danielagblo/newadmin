@@ -5,40 +5,41 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { chatRoomsApi, messagesApi } from "@/lib/api/chats";
+import { feedbackApi } from "@/lib/api/feedback";
 import { usersApi } from "@/lib/api/users";
-import { ChatRoom, Message, User } from "@/lib/types";
-import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
-import {
-  Search,
-  Plus,
-  ChevronLeft,
-  MessageSquare,
-  Users,
-  Mic,
-  Image as ImageIcon,
-  Send,
-  X,
-  Check,
-  RefreshCw,
-  User as UserIcon,
-  Lock,
-  Unlock,
-  Video,
-  File,
-  Reply,
-  MessageCircle,
-  AlertCircle,
-  UserCheck,
-} from "lucide-react";
-import React, {
-  useEffect,
-  useState,
-  useRef,
-  useCallback,
-  useMemo,
-} from "react";
-import Image from "next/image";
 import useWsChat from "@/lib/hooks/useWsChat";
+import { ChatRoom, Message, User } from "@/lib/types";
+import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
+import {
+  AlertCircle,
+  Check,
+  ChevronLeft,
+  File,
+  Image as ImageIcon,
+  Lock,
+  MessageCircle,
+  MessageSquare,
+  Mic,
+  Plus,
+  RefreshCw,
+  Reply,
+  Search,
+  Send,
+  Unlock,
+  UserCheck,
+  User as UserIcon,
+  Users,
+  Video,
+  X,
+} from "lucide-react";
+import Image from "next/image";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 // Extended types to handle missing properties
 type ExtendedChatRoom = ChatRoom & {
@@ -50,6 +51,8 @@ type ExtendedChatRoom = ChatRoom & {
   other_user_name?: string;
   other_user_avatar?: string | null;
   unread?: number;
+  is_pending_request?: boolean;
+  pending_feedback?: any;
 };
 
 type ExtendedUser = User & {
@@ -63,6 +66,101 @@ type MessageSender = {
   profile_picture?: string | null;
   is_staff?: boolean;
   is_superuser?: boolean;
+};
+
+const PENDING_REQUESTS_KEY = 'pending_feedback_requests_v1';
+
+// Renders data URLs/blobs with a regular <img> to avoid Next.js image optimizer errors.
+const SafeImage: React.FC<any> = ({ src, alt, className, style, fill, ...rest }) => {
+  if (!src) return null;
+  const s = String(src || "");
+  if (s.startsWith("data:") || s.startsWith("blob:")) {
+    return (
+      // eslint-disable-next-line jsx-a11y/alt-text
+      <img src={s} alt={alt} className={className} style={style} {...rest} />
+    );
+  }
+  // For regular URLs use next/image (keeps existing behavior)
+  return <Image src={s} alt={alt} className={className} style={style} {...(fill ? { fill: true } : {})} {...rest} />;
+};
+
+const getPendingRequestIds = (): number[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_REQUESTS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const loadPendingRequests = (): any[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const ids: number[] = getPendingRequestIds();
+    return ids
+      .map((id) => {
+        try {
+          const raw = localStorage.getItem(`pending_request_${id}`);
+          if (!raw) return null;
+          const fb = JSON.parse(raw);
+          return {
+            // use negative id to avoid colliding with real rooms
+            id: -fb.id,
+            room_id: `pending_${fb.id}`,
+            name: fb.subject ? `New Request: ${fb.subject}` : `New Request: Feedback #${fb.id}`,
+            status: 'pending',
+            is_group: false,
+            last_message: { text: fb.message, created_at: fb.created_at, sender: (fb.user && fb.user.name) || 'User' },
+            messages: [],
+            profile_picture: fb.user?.profile_picture || null,
+            other_user_name: (fb.user && (fb.user.name || fb.user.email)) || 'Unknown User',
+            other_user_avatar: fb.user?.profile_picture || null,
+            unread: 1,
+            is_pending_request: true,
+            pending_feedback: fb,
+          } as any;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const removePendingRequest = (id: number) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const ids = getPendingRequestIds().filter((x) => x !== id);
+    localStorage.setItem(PENDING_REQUESTS_KEY, JSON.stringify(ids));
+    localStorage.removeItem(`pending_request_${id}`);
+  } catch { }
+};
+
+// Ensure room arrays are unique by `id` or `room_id` to avoid duplicates
+const uniqRooms = (rooms: ExtendedChatRoom[]) => {
+  const seen = new Map<string, ExtendedChatRoom>();
+  for (const r of rooms || []) {
+    const key = r.id != null ? `id:${r.id}` : r.room_id ? `rid:${r.room_id}` : JSON.stringify(r);
+    if (!seen.has(key)) seen.set(key, r);
+  }
+  return Array.from(seen.values());
+};
+
+const addPendingRequest = (feedback: any) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = PENDING_REQUESTS_KEY;
+    const ids = getPendingRequestIds();
+    if (!ids.includes(feedback.id)) {
+      ids.push(feedback.id);
+      localStorage.setItem(key, JSON.stringify(ids));
+      localStorage.setItem(`pending_request_${feedback.id}`, JSON.stringify(feedback));
+    }
+  } catch (e) {
+    console.warn('Failed to add pending request', e);
+  }
 };
 
 // Fix the base Message type to use MessageSender
@@ -79,6 +177,8 @@ type ExtendedMessage = Omit<Message, "sender"> & {
   updated_at: string;
   is_reply?: boolean;
   reply_to?: ExtendedMessage;
+  temp_id?: string;
+  __temp_id?: string;
 };
 
 export default function ChatRoomsPage() {
@@ -222,17 +322,42 @@ export default function ChatRoomsPage() {
   };
 
   const ws = useWsChat();
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current && !switchingRoomRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
 
   useEffect(() => {
     try {
       ws.connectToChatroomsList();
       ws.connectToUnreadCount();
-    } catch {}
-    fetchUsers();
+    } catch { }
+    // Fetch users and also feedbacks so pending requests are available
+    // in this view without visiting the Feedback tab.
+    const fetchInitial = async () => {
+      fetchUsers();
+      try {
+        const data = await feedbackApi.list({ ordering: '-created_at' } as any);
+        if (Array.isArray(data)) {
+          data.forEach((fb: any) => {
+            if (typeof fb.rating === 'number' && fb.rating > 5) {
+              addPendingRequest(fb);
+            }
+          });
+          // trigger re-render so loadPendingRequests is used by filtered list
+          setChatRooms((prev) => uniqRooms(prev));
+        }
+      } catch (e) {
+        // non-fatal: if feedback API fails, we still show existing chatrooms
+        console.warn('Failed to fetch feedbacks for pending requests:', e);
+      }
+    };
+    fetchInitial();
     return () => {
       try {
         ws.closeAll();
-      } catch {}
+      } catch { }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -260,10 +385,18 @@ export default function ChatRoomsPage() {
     selectedRoomRef.current = selectedRoom;
   }, [selectedRoom]);
 
+  // No global event listener — rely on wsRef polling to sync messages
+
   useEffect(() => {
     try {
       if (Array.isArray(ws.chatrooms)) {
-        setChatRooms(ws.chatrooms as ExtendedChatRoom[]);
+        const incoming = uniqRooms(ws.chatrooms as ExtendedChatRoom[]);
+        // shallow compare by id/room_id to avoid unnecessary state updates
+        const prevKeys = chatRooms.map((r) => String(r.room_id ?? r.id)).join(",");
+        const newKeys = incoming.map((r) => String(r.room_id ?? r.id)).join(",");
+        if (prevKeys !== newKeys) {
+          setChatRooms(incoming);
+        }
 
         const newUnreadCounts: Record<number, number> = {};
         ws.chatrooms.forEach((room: any) => {
@@ -271,143 +404,267 @@ export default function ChatRoomsPage() {
             newUnreadCounts[room.id] = room.unread;
           }
         });
-        setUnreadCounts(newUnreadCounts);
+        // update unread counts only when changed
+        const prevUnreadKeys = Object.keys(unreadCounts)
+          .map((k) => `${k}:${unreadCounts[Number(k)]}`)
+          .join(",");
+        const newUnreadKeys = Object.keys(newUnreadCounts)
+          .map((k) => `${k}:${newUnreadCounts[Number(k)]}`)
+          .join(",");
+        if (prevUnreadKeys !== newUnreadKeys) setUnreadCounts(newUnreadCounts);
       }
-    } catch {}
-  }, [ws.chatrooms]);
+    } catch {
+      // ignore
+    }
+  }, [ws.chatrooms, chatRooms, unreadCounts]);
 
-  // Fixed: Debounced message syncing with room check
-  // Replace the entire useEffect that syncs messages with this:
+  // Keep a stable ref to `ws` so we don't include the whole object in deps
+  const wsRef = useRef(ws);
+  useEffect(() => {
+    wsRef.current = ws;
+  }, [ws]);
+
+  // Sync messages for the selected room by retrying until they arrive or timeout
   useEffect(() => {
     if (!selectedRoom || switchingRoomRef.current) return;
 
     const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
+    let syncAttempts = 0;
+    const maxSyncAttempts = 40; // ~8 seconds at 200ms intervals
+    let syncIntervalId: number | null = null;
 
-    // Always sync when we have WebSocket messages for this room
-    if (ws.messages[key] && Array.isArray(ws.messages[key])) {
-      const wsMessages = ws.messages[key];
-
-      // Don't check for "actual changes" - just update
-      setLoadingMessages(true);
-
-      const formattedMessages: ExtendedMessage[] = wsMessages.map(
-        (msg: any) => {
-          let senderInfo: MessageSender = {
-            id: 0,
-            name: "Unknown",
-            email: null,
-            profile_picture: null,
-          };
-
-          if (typeof msg.sender === "string") {
-            senderInfo.name = msg.sender;
-            senderInfo.email = msg.email || null;
-          } else if (msg.sender && typeof msg.sender === "object") {
-            senderInfo = {
-              ...senderInfo,
-              ...msg.sender,
-            };
-          }
-
-          const isStaffOrAdmin =
-            msg.email === user?.email ||
-            (msg.sender &&
-              typeof msg.sender === "string" &&
-              msg.sender === user?.name);
-
-          return {
-            id: msg.id,
-            content: msg.content,
-            sender: senderInfo,
-            room: selectedRoom.id,
-            chat_room: selectedRoom.id,
-            created_at:
-              msg.created_at || msg.timestamp || new Date().toISOString(),
-            updated_at:
-              msg.updated_at ||
-              msg.created_at ||
-              msg.timestamp ||
-              new Date().toISOString(),
-            is_read: isStaffOrAdmin ? true : msg.is_read || false,
-          } as ExtendedMessage;
-        }
-      );
-
-      // Set messages immediately
-      setMessages(formattedMessages);
-
-      if (formattedMessages.length > 0) {
-        ws.markAsRead(key);
-        setUnreadCounts((prev) => ({
-          ...prev,
-          [selectedRoom.id]: 0,
-        }));
-      }
-
-      setLoadingMessages(false);
-    } else if (ws.messages[key] === undefined) {
-      // No messages yet for this room - try to connect to room
-      const connectRoom = async () => {
-        try {
-          await ws.connectToRoom(key);
-
-          // Set a timeout to show loading if no messages arrive
-          setTimeout(() => {
-            if (messages.length === 0) {
-              // Still no messages after connection
-              console.log("No messages received after connection attempt");
+    const syncNow = async () => {
+      try {
+        // Try several key forms: room_id, numeric id, or detect by scanning messages
+        const altKey = String(selectedRoom?.id ?? "");
+        let wsMessages = wsRef.current?.messages?.[key];
+        if (!wsMessages) wsMessages = wsRef.current?.messages?.[altKey];
+        // If still not found, search any room key whose messages reference this room id
+        if (!wsMessages && wsRef.current?.messages) {
+          for (const k of Object.keys(wsRef.current.messages)) {
+            const arr = wsRef.current.messages[k];
+            if (Array.isArray(arr) && arr.some((m: any) => String(m.room) === String(selectedRoom?.id))) {
+              wsMessages = arr;
+              break;
             }
-          }, 3000);
-        } catch (error) {
-          console.error("Failed to connect to room:", error);
-        }
-      };
-
-      connectRoom();
-    }
-  }, [
-    selectedRoom,
-    ws.messages,
-    user,
-    ws.markAsRead,
-    ws,
-    ws.connectToRoom,
-    messages.length,
-  ]);
-
-  // Add polling for real-time updates - FIXED: Only connect if not already connected
-  useEffect(() => {
-    if (!selectedRoom) return;
-
-    const interval = setInterval(() => {
-      if (selectedRoom && !switchingRoomRef.current) {
-        const key = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
-        try {
-          // Only connect if not already connected
-          if (!ws.isRoomConnected(key)) {
-            ws.connectToRoom(key);
           }
-        } catch {}
+        }
+        if (wsMessages && Array.isArray(wsMessages)) {
+          // Messages found — stop retrying
+          if (syncIntervalId !== null) {
+            clearInterval(syncIntervalId);
+            syncIntervalId = null;
+          }
+          setLoadingMessages(true);
+
+          const formattedMessages: ExtendedMessage[] = wsMessages.map(
+            (msg: any) => {
+              let senderInfo: MessageSender = {
+                id: 0,
+                name: "Unknown",
+                email: null,
+                profile_picture: null,
+              };
+
+              if (typeof msg.sender === "string") {
+                senderInfo.name = msg.sender;
+                senderInfo.email = msg.email || null;
+              } else if (msg.sender && typeof msg.sender === "object") {
+                senderInfo = { ...senderInfo, ...msg.sender };
+              }
+
+              const isStaffOrAdmin =
+                msg.email === user?.email ||
+                (msg.sender && typeof msg.sender === "string" && msg.sender === user?.name);
+
+              return {
+                id: msg.id,
+                content: msg.content,
+                sender: senderInfo,
+                room: selectedRoom.id,
+                chat_room: selectedRoom.id,
+                created_at: msg.created_at || msg.timestamp || new Date().toISOString(),
+                updated_at: msg.updated_at || msg.created_at || msg.timestamp || new Date().toISOString(),
+                is_read: isStaffOrAdmin ? true : msg.is_read || false,
+              } as ExtendedMessage;
+            }
+          );
+
+          // Merge optimistic and incoming messages to avoid duplicates
+          try {
+            const existing = messagesRef.current || [];
+            // Use a Map to deduplicate by ID first, preserving order
+            const msgMap = new Map<number | string, ExtendedMessage>();
+
+            // Add existing messages to map
+            for (const m of existing) {
+              const key = m.id || (m as any).__temp_id || `${m.sender?.id}_${m.created_at}`;
+              msgMap.set(key, m);
+            }
+
+            // Process incoming messages — replace if ID/temp_id match, add if new
+            const incomingToProcess = formattedMessages.map((m, idx) => ({ msg: m, raw: wsMessages[idx] }));
+            for (const item of incomingToProcess) {
+              const incoming = { ...item.msg } as ExtendedMessage & { temp_id?: string };
+              incoming.temp_id = (item.raw && (item.raw.temp_id || item.raw.__temp_id)) || (incoming as any).temp_id;
+
+              // Primary: match by server ID
+              if (incoming.id && incoming.id > 0) {
+                msgMap.set(incoming.id, incoming);
+                continue;
+              }
+
+              // Secondary: match by temp_id (optimistic placeholder)
+              if ((incoming as any).temp_id) {
+                const existingByTemp = Array.from(msgMap.values()).find(
+                  (m) => ((m as any).__temp_id || (m as any).temp_id) === (incoming as any).temp_id
+                );
+                if (existingByTemp) {
+                  // Replace optimistic with server response
+                  const key = existingByTemp.id || (existingByTemp as any).__temp_id;
+                  msgMap.set(key, incoming);
+                  continue;
+                }
+                // No existing optimistic found; add as new
+                const tempKey = (incoming as any).temp_id;
+                msgMap.set(tempKey, incoming);
+                continue;
+              }
+
+              // Tertiary: fuzzy match on content+sender+time (within 5s) for server echoes
+              const incomingTime = incoming.created_at ? new Date(incoming.created_at).getTime() : 0;
+              let found = false;
+              for (const [key, existing] of msgMap.entries()) {
+                if (!existing || !incoming) continue;
+                if (existing.sender?.id && incoming.sender?.id && existing.sender.id !== incoming.sender.id) continue;
+                if (existing.content !== incoming.content) continue;
+                const existingTime = existing.created_at ? new Date(existing.created_at).getTime() : 0;
+                if (Math.abs(existingTime - incomingTime) <= 5000) {
+                  // Always replace with server version (more authoritative)
+                  msgMap.set(key, incoming);
+                  found = true;
+                  break;
+                }
+              }
+              if (found) continue;
+
+              // No match found — add as genuinely new message
+              const newKey = incoming.id || (incoming as any).temp_id || `${incoming.sender?.id}_${incoming.created_at}`;
+              msgMap.set(newKey, incoming);
+            }
+
+            // Convert map back to sorted array
+            const merged = Array.from(msgMap.values()).sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+
+            // Avoid updating state if content is identical to prevent render loops
+            try {
+              const existing = messagesRef.current || [];
+              const same =
+                existing.length === merged.length &&
+                existing.every((m: any, i: number) =>
+                  String(m.id) === String(merged[i]?.id) &&
+                  String(m.created_at) === String(merged[i]?.created_at) &&
+                  String(m.content) === String(merged[i]?.content)
+                );
+              if (!same) setMessages(merged);
+            } catch {
+              setMessages(merged);
+            }
+          } catch (err) {
+            try {
+              const existing = messagesRef.current || [];
+              const same =
+                existing.length === formattedMessages.length &&
+                existing.every((m: any, i: number) =>
+                  String(m.id) === String(formattedMessages[i]?.id) &&
+                  String(m.created_at) === String(formattedMessages[i]?.created_at) &&
+                  String(m.content) === String(formattedMessages[i]?.content)
+                );
+              if (!same) setMessages(formattedMessages);
+            } catch {
+              setMessages(formattedMessages);
+            }
+          }
+
+          if (formattedMessages.length > 0) {
+            try {
+              await wsRef.current?.markAsRead?.(key);
+            } catch { }
+            setUnreadCounts((prev) => ({ ...prev, [selectedRoom.id]: 0 }));
+          }
+
+          setLoadingMessages(false);
+          return;
+        }
+
+        // No messages found yet — try to connect to room and keep retrying
+        syncAttempts++;
+        if (syncAttempts === 1) {
+          // First attempt: connect to room
+          try {
+            await wsRef.current?.connectToRoom?.(key);
+          } catch (err) {
+            console.error("Failed to connect to room:", err);
+          }
+        }
+
+        // If we've exceeded max attempts, stop retrying and show "no messages"
+        if (syncAttempts >= maxSyncAttempts) {
+          if (syncIntervalId !== null) {
+            clearInterval(syncIntervalId);
+            syncIntervalId = null;
+          }
+          setLoadingMessages(false);
+          return;
+        }
+      } catch (e) {
+        console.error("Error syncing messages:", e);
       }
-    }, 10000); // Increased to 10 seconds to reduce frequency
+    };
 
-    return () => clearInterval(interval);
-  }, [selectedRoom, ws.connectToRoom, ws]);
+    // Run immediately and also set a short interval to catch rapid updates
+    syncNow();
+    syncIntervalId = window.setInterval(syncNow, 200);
 
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current && !switchingRoomRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, []);
+    return () => {
+      if (syncIntervalId !== null) {
+        clearInterval(syncIntervalId);
+      }
+    };
+  }, [selectedRoom?.room_id, selectedRoom?.id, user?.id, selectedRoom, user?.email, user?.name, ws.lastUpdateTime]);
 
   // Add this useEffect to save messages to localStorage when they change
   useEffect(() => {
     if (selectedRoom && messages.length > 0) {
       try {
-        localStorage.setItem(
-          `chat_messages_${selectedRoom.id}`,
-          JSON.stringify(messages)
-        );
+        // Only save messages that:
+        // 1. Belong to this room
+        // 2. Have a proper server ID (not optimistic/timestamp-based IDs like Date.now())
+        // 3. Are not marked as optimistic placeholders
+        const messagesToSave = messages.filter((m) => {
+          // Must belong to current room
+          if (String(m.room ?? m.chat_room) !== String(selectedRoom.id)) {
+            return false;
+          }
+          // Skip optimistic messages (ID looks like Date.now() - very large numbers)
+          // Proper IDs from server are typically smaller (< 10 million)
+          if (typeof m.id === "number" && m.id > 1000000000000) {
+            return false; // Skip timestamp-based optimistic IDs
+          }
+          // Skip if explicitly marked as optimistic
+          if ((m as any).__optimistic) {
+            return false;
+          }
+          return true;
+        });
+        if (messagesToSave.length > 0) {
+          localStorage.setItem(
+            `chat_messages_${selectedRoom.id}`,
+            JSON.stringify(messagesToSave)
+          );
+        }
       } catch (error) {
         console.error("Failed to cache messages:", error);
       }
@@ -447,7 +704,7 @@ export default function ChatRoomsPage() {
     }
   };
 
-  const handleCreateCase = async (selectedUser: ExtendedUser) => {
+  const handleCreateCase = useCallback(async (selectedUser: ExtendedUser, initialMessage?: string): Promise<ExtendedChatRoom | null> => {
     try {
       // Clear current messages
       setMessages([]);
@@ -485,8 +742,8 @@ export default function ChatRoomsPage() {
         unread: 0,
       };
 
-      // Immediately update chat rooms list
-      setChatRooms((prev) => [extendedRoom, ...prev]);
+      // Immediately update chat rooms list (deduplicated)
+      setChatRooms((prev) => uniqRooms([extendedRoom, ...prev]));
 
       // Immediately select the new room
       setSelectedRoom(extendedRoom);
@@ -500,22 +757,23 @@ export default function ChatRoomsPage() {
         console.error("Failed to connect to room via websocket", e);
       }
 
-      // Create initial system message
-      const systemMessage: ExtendedMessage = {
+      // Create initial message: if initialMessage provided use it as the
+      // first chat message (from the user); otherwise create the default
+      // system message.
+      const firstMessage: ExtendedMessage = {
         id: Date.now(),
-        content: "Case opened by support agent.",
-        sender: {
-          id: 0,
-          name: "System",
-          email: "system@example.com",
-        } as MessageSender,
+        content: initialMessage || 'Case opened by support agent.',
+        sender: (initialMessage
+          ? ({ id: selectedUser.id || 0, name: selectedUser.name || selectedUser.email || 'User', email: selectedUser.email || null } as MessageSender)
+          : ({ id: 0, name: 'System', email: 'system@example.com' } as MessageSender)
+        ),
         room: extendedRoom.id,
-        is_read: true,
+        is_read: !!initialMessage ? false : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      };
+      } as ExtendedMessage;
 
-      setMessages([systemMessage]);
+      setMessages([firstMessage]);
       setIsUsersModalOpen(false);
       switchingRoomRef.current = false;
 
@@ -523,25 +781,66 @@ export default function ChatRoomsPage() {
       setTimeout(() => {
         try {
           ws.connectToChatroomsList();
-        } catch {}
+        } catch { }
       }, 1000);
+      return extendedRoom;
     } catch (error: any) {
       console.error("Error creating case:", error);
       alert(error.response?.data?.detail || "Failed to create case");
       switchingRoomRef.current = false;
+      return null;
     }
-  };
+  }, [ws]);
 
-  const handleSelectRoom = useCallback(
+  const handleSelectRoom = useCallback<(room: ExtendedChatRoom) => Promise<void>>(
     async (room: ExtendedChatRoom) => {
       if (selectedRoom?.id === room.id || switchingRoomRef.current) return;
+
+      // If this is a pending feedback request, convert it to a real room first
+      if ((room as any).is_pending_request) {
+        try {
+          // Inline conversion logic to avoid circular dependency
+          const fb = room.pending_feedback || (room.id && room.id < 0
+            ? JSON.parse(localStorage.getItem(`pending_request_${Math.abs(room.id)}`) || 'null')
+            : null);
+
+          if (fb) {
+            const pendingUser: ExtendedUser = {
+              id: (fb.user && typeof fb.user === 'object' && fb.user.id) ? fb.user.id : Math.abs(fb.id) + 1000000,
+              name: (fb.user && typeof fb.user === 'object' && (fb.user.name || fb.user.email)) || `User ${fb.id}`,
+              email: fb.user && typeof fb.user === 'object' ? fb.user.email : undefined,
+              profile_picture: fb.user?.profile_picture || null,
+            } as any;
+
+            const created = await handleCreateCase(pendingUser, fb.message);
+            if (created && created.id) {
+              try {
+                await chatRoomsApi.sendMessage(created.id, fb.message);
+              } catch (sendErr) {
+                console.warn('Failed to send initial message to server room:', sendErr);
+              }
+
+              try {
+                await feedbackApi.update(fb.id, { status: 'RESOLVED' } as any);
+              } catch (updateErr) {
+                console.warn('Failed to update feedback status:', updateErr);
+              }
+
+              removePendingRequest(fb.id);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to convert pending request:', e);
+        }
+        return;
+      }
 
       setIsSwitchingRoom(true);
       switchingRoomRef.current = true;
       setLoadingMessages(true);
 
       try {
-        // Clear previous messages immediately for UI responsiveness
+        // Clear messages immediately to prevent showing messages from the previous room
         setMessages([]);
         setReplyingTo(null);
 
@@ -580,42 +879,110 @@ export default function ChatRoomsPage() {
           [room.id]: 0,
         }));
 
-        // Check if we have cached messages in localStorage
+        // Check if we have cached messages in localStorage and verify they belong to this room
         try {
           const cached = localStorage.getItem(`chat_messages_${room.id}`);
           if (cached) {
             const parsed = JSON.parse(cached) as ExtendedMessage[];
-            if (parsed.length > 0) {
-              setMessages(parsed);
-              setLoadingMessages(false);
+            // Only show cached messages if they're not empty AND they belong to this room
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              // Verify at least one message belongs to this room to avoid contamination
+              // AND skip any optimistic/timestamp-based IDs
+              const validMessages = parsed.filter(
+                (m) =>
+                  String(m.room ?? m.chat_room) === String(room.id) &&
+                  !(typeof m.id === "number" && m.id > 1000000000000) &&
+                  !(m as any).__optimistic
+              );
+              if (validMessages.length > 0) {
+                setMessages(validMessages);
+              } else {
+                console.warn("Cached messages belong to different room or are optimistic, skipping");
+              }
             }
           }
         } catch (error) {
           console.error("Failed to load cached messages:", error);
         }
       } finally {
-        // Don't set loading to false immediately - wait a bit
+        // Don't set loading to false immediately - wait a bit. If we have cached
+        // messages, keep `loadingMessages` true to indicate background fetch.
         setTimeout(() => {
           setIsSwitchingRoom(false);
           switchingRoomRef.current = false;
-          // Keep loading true if still no messages
           if (messages.length === 0) {
-            // Show "no messages" state after 5 seconds
+            // Show "no messages" state after 3 seconds
             setTimeout(() => {
               setLoadingMessages(false);
-            }, 5000);
+            }, 3000);
           } else {
-            setLoadingMessages(false);
+            // if we displayed cached messages, keep loadingMessages true for a short
+            // grace period so the UI can show an inline updater; then clear it.
+            setTimeout(() => setLoadingMessages(false), 1500);
           }
-        }, 500);
+        }, 200);
       }
     },
-    [selectedRoom, ws, messages.length]
+    [selectedRoom, ws, messages.length, handleCreateCase]
   );
+
+  const convertPendingToRoom = useCallback(async (pendingRoom: any) => {
+    const fb = pendingRoom.pending_feedback || (pendingRoom.id && pendingRoom.id < 0
+      ? JSON.parse(localStorage.getItem(`pending_request_${Math.abs(pendingRoom.id)}`) || 'null')
+      : null);
+
+    if (!fb) {
+      try {
+        await handleSelectRoom(pendingRoom);
+      } catch { }
+      return;
+    }
+
+    const pendingUser: ExtendedUser = {
+      id: (fb.user && typeof fb.user === 'object' && fb.user.id) ? fb.user.id : Math.abs(fb.id) + 1000000,
+      name: (fb.user && typeof fb.user === 'object' && (fb.user.name || fb.user.email)) || `User ${fb.id}`,
+      email: fb.user && typeof fb.user === 'object' ? fb.user.email : undefined,
+      profile_picture: fb.user?.profile_picture || null,
+    } as any;
+
+    try {
+      const created = await handleCreateCase(pendingUser, fb.message);
+      if (created && created.id) {
+        // Send the original feedback message to the newly created room on the server
+        try {
+          await chatRoomsApi.sendMessage(created.id, fb.message);
+        } catch (sendErr) {
+          console.warn('Failed to send initial message to server room:', sendErr);
+        }
+
+        // Mark feedback as resolved on server so it no longer appears as pending
+        try {
+          await feedbackApi.update(fb.id, { status: 'RESOLVED' } as any);
+        } catch (updateErr) {
+          console.warn('Failed to update feedback status:', updateErr);
+        }
+
+        // Remove local pending record
+        removePendingRequest(fb.id);
+      } else {
+        // If room was not created, fall back to selecting the pending virtual room
+        await handleSelectRoom(pendingRoom);
+      }
+    } catch (e) {
+      console.error('Failed to convert pending request:', e);
+      alert('Failed to create support case from pending request');
+    }
+  }, [handleCreateCase, handleSelectRoom]);
+
+
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedRoom || selectedRoom.status === "closed")
       return;
+
+    // Store message and clear input immediately
+    const messageText = newMessage.trim();
+    setNewMessage("");
 
     try {
       const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -624,7 +991,10 @@ export default function ChatRoomsPage() {
       // Use MessageSender type for optimistic message
       const optimistic: ExtendedMessage = {
         id: Date.now(),
-        content: newMessage.trim(),
+        temp_id: tempId,
+        __temp_id: tempId,
+        __optimistic: true,
+        content: messageText,
         sender: {
           id: user?.id || 1,
           name: user?.name || "Support Agent",
@@ -639,10 +1009,25 @@ export default function ChatRoomsPage() {
         updated_at: new Date().toISOString(),
       };
 
-      // Optimistically add to UI
+      // Only add optimistic UI if we already have an active room websocket connection.
+      // If the room WS is not connected, attempt to connect and rely on the server echo
+      // to render the authoritative message (avoid showing optimistic placeholder).
+      let usedOptimistic = false;
       try {
-        ws.addLocalMessage(roomKey, optimistic as any);
-      } catch {}
+        const isConnected = ws.isRoomConnected(roomKey);
+        if (isConnected) {
+          ws.addLocalMessage(roomKey, optimistic as any);
+          usedOptimistic = true;
+        } else {
+          try {
+            await ws.connectToRoom(roomKey);
+          } catch {
+            // ignore connect errors; we'll still attempt to send below
+          }
+        }
+      } catch {
+        // ignore
+      }
 
       setTimeout(() => {
         scrollToBottom();
@@ -650,32 +1035,43 @@ export default function ChatRoomsPage() {
 
       // Send via websocket
       try {
-        await ws.sendMessage(roomKey, newMessage.trim(), tempId);
+        await ws.sendMessage(roomKey, messageText, tempId);
 
         // Update chat room's last message locally
         setChatRooms((prev) =>
           prev.map((room) =>
             room.id === selectedRoom.id
               ? {
-                  ...room,
-                  last_message: {
-                    text: newMessage.trim(),
-                    is_media: false,
-                    created_at: new Date().toISOString(),
-                    sender: user?.name || "Support Agent",
-                  },
-                  updated_at: new Date().toISOString(),
-                }
+                ...room,
+                last_message: {
+                  text: messageText,
+                  is_media: false,
+                  created_at: new Date().toISOString(),
+                  sender: user?.name || "Support Agent",
+                },
+                updated_at: new Date().toISOString(),
+              }
               : room
           )
         );
+
+        // If this was a pending request, mark it as a normal open support chat now
+        if (selectedRoom && (selectedRoom as any).is_pending_request) {
+          setChatRooms((prev) =>
+            prev.map((r) =>
+              r.id === selectedRoom.id
+                ? { ...r, is_pending_request: false, status: 'open' }
+                : r
+            )
+          );
+          setSelectedRoom((prev) => (prev ? { ...prev, is_pending_request: false, status: 'open' } : prev));
+        }
       } catch (err) {
         console.error("WS send failed", err);
       }
     } catch (err) {
       console.error("Error sending message:", err);
     } finally {
-      setNewMessage("");
       setReplyingTo(null);
     }
   };
@@ -690,8 +1086,8 @@ export default function ChatRoomsPage() {
       const fileType = file.type.startsWith("video/")
         ? "video"
         : file.type.startsWith("audio/")
-        ? "audio"
-        : "image";
+          ? "audio"
+          : "image";
 
       // Create preview URL for immediate UI display
       const base64DataUrl = await new Promise<string>((resolve, reject) => {
@@ -732,13 +1128,21 @@ export default function ChatRoomsPage() {
         ],
       };
 
-      // Optimistically add to UI
-      setMessages((prev) => [...prev, optimistic]);
-
+      // Only add optimistic UI if room WS is connected; otherwise rely on server echo
       try {
-        ws.addLocalMessage(roomKey, optimistic as any);
+        const isConnected = ws.isRoomConnected(roomKey);
+        if (isConnected) {
+          // use hook-local optimistic add (which handles dedupe)
+          ws.addLocalMessage(roomKey, optimistic as any);
+        } else {
+          try {
+            await ws.connectToRoom(roomKey);
+          } catch {
+            // ignore
+          }
+        }
       } catch (error) {
-        console.error("Failed to add to ws local messages:", error);
+        console.error("Failed to add optimistic image message:", error);
       }
 
       setTimeout(() => {
@@ -754,20 +1158,20 @@ export default function ChatRoomsPage() {
           prev.map((room) =>
             room.id === selectedRoom.id
               ? {
-                  ...room,
-                  last_message: {
-                    text:
-                      fileType === "image"
-                        ? "📷 Image"
-                        : fileType === "video"
+                ...room,
+                last_message: {
+                  text:
+                    fileType === "image"
+                      ? "📷 Image"
+                      : fileType === "video"
                         ? "🎥 Video"
                         : "🎵 Audio",
-                    is_media: true,
-                    created_at: new Date().toISOString(),
-                    sender: user?.name || "Support Agent",
-                  },
-                  updated_at: new Date().toISOString(),
-                }
+                  is_media: true,
+                  created_at: new Date().toISOString(),
+                  sender: user?.name || "Support Agent",
+                },
+                updated_at: new Date().toISOString(),
+              }
               : room
           )
         );
@@ -833,15 +1237,29 @@ export default function ChatRoomsPage() {
           ],
         };
 
-        setMessages((prev) => [...prev, audioMessage]);
+        // Only add optimistic UI if room WS is connected; otherwise rely on server echo
+        try {
+          const isConnected = ws.isRoomConnected(roomKey);
+          if (isConnected) {
+            ws.addLocalMessage(roomKey, audioMessage as any);
+          } else {
+            try {
+              await ws.connectToRoom(roomKey);
+            } catch {
+              // ignore
+            }
+          }
+        } catch (err) {
+          console.error("Failed to add optimistic audio message:", err);
+        }
         setChatRooms((prev) =>
           prev.map((room) =>
             room.id === selectedRoom.id
               ? {
-                  ...room,
-                  last_message: "🎵 Voice message",
-                  updated_at: new Date().toISOString(),
-                }
+                ...room,
+                last_message: "🎵 Voice message",
+                updated_at: new Date().toISOString(),
+              }
               : room
           )
         );
@@ -904,8 +1322,14 @@ export default function ChatRoomsPage() {
           ],
         };
 
-        // Add optimistic message
-        setMessages((prev) => [...prev, optimistic]);
+        // Add optimistic message only if WS connected; otherwise rely on server echo
+        try {
+          const isConnected = ws.isRoomConnected(roomKey);
+          if (isConnected) ws.addLocalMessage(roomKey, optimistic as any);
+          else await ws.connectToRoom(roomKey);
+        } catch (err) {
+          console.error("Failed to add optimistic message:", err);
+        }
         setTimeout(() => {
           scrollToBottom();
         }, 100);
@@ -918,15 +1342,15 @@ export default function ChatRoomsPage() {
             prev.map((room) =>
               room.id === selectedRoom.id
                 ? {
-                    ...room,
-                    last_message: {
-                      text: "🎵 Voice message",
-                      is_media: true,
-                      created_at: new Date().toISOString(),
-                      sender: user?.name || "Support Agent",
-                    },
-                    updated_at: new Date().toISOString(),
-                  }
+                  ...room,
+                  last_message: {
+                    text: "🎵 Voice message",
+                    is_media: true,
+                    created_at: new Date().toISOString(),
+                    sender: user?.name || "Support Agent",
+                  },
+                  updated_at: new Date().toISOString(),
+                }
                 : room
             )
           );
@@ -1041,15 +1465,20 @@ export default function ChatRoomsPage() {
     }));
   }, []);
 
+  const getUnreadCount = useCallback((roomId: number) => {
+    return unreadCounts[roomId] || 0;
+  }, [unreadCounts]);
+
   const getFilteredChatRooms = useCallback(() => {
-    let filtered = [...chatRooms];
+    const pending = loadPendingRequests();
+    let filtered = [...(pending || []), ...chatRooms];
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(
         (room) =>
           room.name.toLowerCase().includes(term) ||
           room.other_user_name?.toLowerCase().includes(term) ||
-          room.members?.some((member) => {
+          room.members?.some((member: any) => {
             if (typeof member === "object") {
               return (
                 member.name?.toLowerCase().includes(term) ||
@@ -1078,11 +1507,9 @@ export default function ChatRoomsPage() {
       const timeB = new Date(getRoomUpdatedTime(b)).getTime();
       return timeB - timeA; // Descending
     });
-  }, [chatRooms, searchTerm, filterOption]);
+  }, [chatRooms, searchTerm, filterOption, getUnreadCount]);
 
-  const getUnreadCount = (roomId: number) => {
-    return unreadCounts[roomId] || 0;
-  };
+
 
   const getLastMessage = (room: ExtendedChatRoom) => {
     // If last_message is an object
@@ -1195,6 +1622,53 @@ export default function ChatRoomsPage() {
     [messages, groupMessagesByDate]
   );
 
+  // Debug: inspect ws.message keys and whether any map to the selected room
+  useEffect(() => {
+    try {
+      const wsMessages = (ws as any)?.messages || {};
+      console.debug("[debug] ws.messages keys:", Object.keys(wsMessages));
+      console.debug(
+        "[debug] selectedRoom:",
+        { id: selectedRoom?.id, room_id: selectedRoom?.room_id }
+      );
+      console.debug("[debug] messages length:", messages.length);
+
+      const keys = Object.keys(wsMessages);
+      const matchedKeys = keys.filter(
+        (k) => k === String(selectedRoom?.id) || k === selectedRoom?.room_id
+      );
+      console.debug("[debug] matched keys for selectedRoom:", matchedKeys);
+
+      if (matchedKeys.length > 0) {
+        const sample = wsMessages[matchedKeys[0]];
+        console.debug("[debug] sample messages for key:", matchedKeys[0], sample?.slice?.(0, 5));
+      } else {
+        // Scan a few messages to see if any contain a room pointer matching selectedRoom
+        const found: any[] = [];
+        for (const k of keys) {
+          const arr = wsMessages[k];
+          if (Array.isArray(arr)) {
+            for (const m of arr) {
+              if (
+                m?.room === selectedRoom?.id ||
+                m?.room_id === selectedRoom?.room_id ||
+                m?.chatroom_id === selectedRoom?.id
+              ) {
+                found.push({ key: k, msg: m });
+                if (found.length >= 5) break;
+              }
+            }
+          }
+          if (found.length >= 5) break;
+        }
+        console.debug("[debug] scanned messages matching selectedRoom:", found.slice(0, 5));
+      }
+    } catch (err) {
+      console.error("[debug] error inspecting ws.messages", err);
+    }
+    // Intentionally only run when selectedRoom or messages count changes
+  }, [selectedRoom?.id, selectedRoom?.room_id, messages.length]);
+
   return (
     <Layout>
       <div className="flex h-[calc(100vh-80px)] gap-4 p-4">
@@ -1252,9 +1726,8 @@ export default function ChatRoomsPage() {
                 </span>
                 <button type="button" className="p-1">
                   <ChevronLeft
-                    className={`h-4 w-4 transition-transform duration-200 ${
-                      openFilter ? "-rotate-90" : ""
-                    }`}
+                    className={`h-4 w-4 transition-transform duration-200 ${openFilter ? "-rotate-90" : ""
+                      }`}
                   />
                 </button>
               </div>
@@ -1265,11 +1738,10 @@ export default function ChatRoomsPage() {
                     (option) => (
                       <button
                         key={option}
-                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${
-                          filterOption === option
-                            ? "bg-blue-50 text-blue-600"
-                            : ""
-                        }`}
+                        className={`w-full px-4 py-2 text-left hover:bg-gray-50 text-sm ${filterOption === option
+                          ? "bg-blue-50 text-blue-600"
+                          : ""
+                          }`}
                         onClick={() => {
                           setFilterOption(option);
                           setOpenFilter(false);
@@ -1310,21 +1782,19 @@ export default function ChatRoomsPage() {
                   return (
                     <div
                       key={room?.id || room?.room_id}
-                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                        isActive ? "bg-blue-50" : ""
-                      } ${isClosed ? "opacity-75" : ""}`}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${isActive ? "bg-blue-50" : ""
+                        } ${isClosed ? "opacity-75" : ""}`}
                       onClick={() => handleSelectRoom(room)}
                     >
                       <div className="flex items-start gap-3">
                         <div className="relative flex-shrink-0">
                           <div
-                            className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                              isClosed ? "bg-gray-100" : "bg-blue-100"
-                            }`}
+                            className={`w-12 h-12 rounded-full flex items-center justify-center ${isClosed ? "bg-gray-100" : "bg-blue-100"
+                              }`}
                           >
                             {avatarInfo.type === "image" ? (
                               <div className="relative w-full h-full">
-                                <Image
+                                <SafeImage
                                   src={
                                     avatarInfo.url?.replace(
                                       "wss://",
@@ -1339,9 +1809,8 @@ export default function ChatRoomsPage() {
                               </div>
                             ) : (
                               <avatarInfo.icon
-                                className={`h-6 w-6 ${
-                                  isClosed ? "text-gray-400" : "text-blue-600"
-                                }`}
+                                className={`h-6 w-6 ${isClosed ? "text-gray-400" : "text-blue-600"
+                                  }`}
                               />
                             )}
                           </div>
@@ -1358,6 +1827,11 @@ export default function ChatRoomsPage() {
                               <h3 className="font-semibold text-gray-900 truncate">
                                 {displayName}
                               </h3>
+                              {(room as any).is_pending_request && (
+                                <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full ml-2">
+                                  New Request
+                                </span>
+                              )}
                               {isClosed && (
                                 <span className="px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
                                   Closed
@@ -1430,15 +1904,14 @@ export default function ChatRoomsPage() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          selectedRoom.status === "closed"
-                            ? "bg-gray-100"
-                            : "bg-blue-100"
-                        }`}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${selectedRoom.status === "closed"
+                          ? "bg-gray-100"
+                          : "bg-blue-100"
+                          }`}
                       >
                         {selectedRoom.other_user_avatar ? (
                           <div className="relative w-full h-full">
-                            <Image
+                            <SafeImage
                               src={
                                 selectedRoom.other_user_avatar?.replace(
                                   "wss://",
@@ -1453,19 +1926,17 @@ export default function ChatRoomsPage() {
                           </div>
                         ) : selectedRoom.is_group ? (
                           <Users
-                            className={`h-5 w-5 ${
-                              selectedRoom.status === "closed"
-                                ? "text-gray-400"
-                                : "text-blue-600"
-                            }`}
+                            className={`h-5 w-5 ${selectedRoom.status === "closed"
+                              ? "text-gray-400"
+                              : "text-blue-600"
+                              }`}
                           />
                         ) : (
                           <UserIcon
-                            className={`h-5 w-5 ${
-                              selectedRoom.status === "closed"
-                                ? "text-gray-400"
-                                : "text-blue-600"
-                            }`}
+                            className={`h-5 w-5 ${selectedRoom.status === "closed"
+                              ? "text-gray-400"
+                              : "text-blue-600"
+                              }`}
                           />
                         )}
                       </div>
@@ -1546,7 +2017,7 @@ export default function ChatRoomsPage() {
               </div>
 
               <div className="flex-1 overflow-hidden flex flex-col">
-                {isSwitchingRoom || loadingMessages ? (
+                {(isSwitchingRoom || loadingMessages) && messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
@@ -1560,6 +2031,12 @@ export default function ChatRoomsPage() {
                   </div>
                 ) : (
                   <div className="flex-1 overflow-y-auto p-4">
+                    {loadingMessages && (
+                      <div className="text-sm text-gray-500 mb-3 flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        Loading recent messages...
+                      </div>
+                    )}
                     {replyingTo && (
                       <div className="mb-4 bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-lg">
                         <div className="flex justify-between items-start">
@@ -1576,12 +2053,12 @@ export default function ChatRoomsPage() {
                               ) : replyingTo.attachments ? (
                                 <p className="text-gray-500">
                                   {replyingTo.attachments[0]?.file_type ===
-                                  "image"
+                                    "image"
                                     ? "📷 Image"
                                     : replyingTo.attachments[0]?.file_type ===
                                       "video"
-                                    ? "🎥 Video"
-                                    : "🎵 Audio"}
+                                      ? "🎥 Video"
+                                      : "🎵 Audio"}
                                 </p>
                               ) : (
                                 <p className="text-gray-500">Message</p>
@@ -1625,16 +2102,15 @@ export default function ChatRoomsPage() {
                           return (
                             <div
                               key={message.id}
-                              className={`flex gap-3 mb-4 group ${
-                                isStaffOrAdmin ? "justify-end" : ""
-                              } ${isSystemMessage ? "justify-start" : ""}`}
+                              className={`flex gap-3 mb-4 group ${isStaffOrAdmin ? "justify-end" : ""
+                                } ${isSystemMessage ? "justify-start" : ""}`}
                             >
                               {!isStaffOrAdmin && (
                                 <div className="flex-shrink-0">
                                   <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                                     {senderAvatar ? (
                                       <div className="relative w-full h-full">
-                                        <Image
+                                        <SafeImage
                                           src={senderAvatar?.replace(
                                             "wss://",
                                             "https://"
@@ -1660,7 +2136,7 @@ export default function ChatRoomsPage() {
                                     <p className="text-xs font-medium text-gray-700">
                                       {typeof message.sender === "object"
                                         ? message.sender.name ||
-                                          message.sender.email
+                                        message.sender.email
                                         : `User ${message.sender}`}
                                     </p>
                                     <span
@@ -1673,13 +2149,12 @@ export default function ChatRoomsPage() {
                                 )}
 
                                 <div
-                                  className={`px-4 py-2 relative ${
-                                    isStaffOrAdmin
-                                      ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
-                                      : !isSystemMessage
+                                  className={`px-4 py-2 relative ${isStaffOrAdmin
+                                    ? "bg-blue-600 text-white rounded-2xl rounded-tr-none"
+                                    : !isSystemMessage
                                       ? "bg-gray-100 text-gray-700 text-left rounded-lg "
                                       : "bg-gray-100 text-gray-900 rounded-2xl rounded-tl-none"
-                                  }`}
+                                    }`}
                                 >
                                   {message.content &&
                                     (() => {
@@ -1738,7 +2213,7 @@ export default function ChatRoomsPage() {
                                                 {/* Remove fixed width/height, let image determine size */}
                                                 <div className="relative rounded-lg overflow-hidden border border-gray-200 max-w-full">
                                                   {/* Use regular img tag for data URLs or Next Image without fill */}
-                                                  <img
+                                                  <SafeImage
                                                     src={content}
                                                     alt="Uploaded image"
                                                     className="w-auto h-auto max-h-[400px] max-w-full object-contain hover:scale-105 transition-transform duration-200"
@@ -1746,8 +2221,7 @@ export default function ChatRoomsPage() {
                                                       maxWidth: "100%",
                                                       height: "auto",
                                                     }}
-                                                    onLoad={(e) => {
-                                                      // Optional: Log image dimensions for debugging
+                                                    onLoad={(e: any) => {
                                                       console.log(
                                                         "Image loaded:",
                                                         e.currentTarget
@@ -1834,11 +2308,10 @@ export default function ChatRoomsPage() {
                                   {!isSystemMessage && (
                                     <div className="flex items-center justify-end gap-2 mt-2">
                                       <span
-                                        className={`text-xs ${
-                                          isStaffOrAdmin
-                                            ? "text-blue-200"
-                                            : "text-gray-500"
-                                        }`}
+                                        className={`text-xs ${isStaffOrAdmin
+                                          ? "text-blue-200"
+                                          : "text-gray-500"
+                                          }`}
                                       >
                                         {formatTime(message.created_at)}
                                       </span>
@@ -1959,11 +2432,14 @@ export default function ChatRoomsPage() {
                             ? handleStopRecording
                             : handleStartRecording
                         }
-                        className={`p-3 self-end ${
-                          isRecording
-                            ? "text-red-600 animate-pulse"
-                            : "text-gray-500 hover:text-gray-700"
-                        }`}
+                        className={`p-3 self-end ${isRecording
+                          ? "text-red-600 animate-pulse"
+                          : "text-gray-500 hover:text-gray-700"
+                          }`}
+                        className={`p-3 ${isRecording
+                          ? "text-red-600 animate-pulse"
+                          : "text-gray-500 hover:text-gray-700"
+                          }`}
                         title={
                           isRecording
                             ? "Stop recording"
@@ -2034,7 +2510,7 @@ export default function ChatRoomsPage() {
                     <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden">
                       {u.profile_picture ? (
                         <div className="relative w-full h-full">
-                          <Image
+                          <SafeImage
                             src={u.profile_picture?.replace(
                               "wss://",
                               "https://"

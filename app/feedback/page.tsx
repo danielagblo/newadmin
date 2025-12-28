@@ -14,6 +14,38 @@ import { format } from 'date-fns';
 import { Archive, CheckCircle, Eye, MessageSquare, Search, Star } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
+const PENDING_REQUESTS_KEY = 'pending_feedback_requests_v1';
+
+const getPendingRequestIds = (): number[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_REQUESTS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+};
+
+const addPendingRequest = (feedback: Feedback) => {
+  if (typeof window === 'undefined') return;
+  const ids = getPendingRequestIds();
+  if (!ids.includes(feedback.id)) {
+    ids.push(feedback.id);
+    localStorage.setItem(PENDING_REQUESTS_KEY, JSON.stringify(ids));
+    try {
+      localStorage.setItem(`pending_request_${feedback.id}`, JSON.stringify(feedback));
+    } catch {}
+  }
+};
+
+const removePendingRequest = (id: number) => {
+  if (typeof window === 'undefined') return;
+  const ids = getPendingRequestIds().filter((x) => x !== id);
+  localStorage.setItem(PENDING_REQUESTS_KEY, JSON.stringify(ids));
+  try {
+    localStorage.removeItem(`pending_request_${id}`);
+  } catch {}
+};
+
 export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +76,32 @@ export default function FeedbackPage() {
 
       const data = await feedbackApi.list(params);
       const feedbacksArray = Array.isArray(data) ? data : [];
-      setFeedbacks(feedbacksArray);
+
+      // Auto-promote high-score feedbacks into pending support requests.
+      // Promotion is client-side persisted in localStorage so the Feedback tab
+      // will no longer show promoted items and the Chatrooms list can pick
+      // them up as "New Request" entries.
+      try {
+        const pendingIds = getPendingRequestIds();
+        feedbacksArray.forEach((f) => {
+          if (typeof f.rating === 'number' && f.rating > 5) {
+            if (!pendingIds.includes(f.id)) {
+              addPendingRequest(f);
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to auto-promote feedbacks:', e);
+      }
+
+      // Filter out promoted feedbacks from the feedbacks list shown to admins.
+      const visibleFeedbacks = feedbacksArray.filter((f) => {
+        const promoted = getPendingRequestIds().includes(f.id);
+        const shouldAutoPromote = typeof f.rating === 'number' && f.rating > 5;
+        return !promoted && !shouldAutoPromote;
+      });
+
+      setFeedbacks(visibleFeedbacks);
 
       // Also fetch alerts in parallel (best-effort). We don't want alerts failures
       // to prevent feedbacks from showing, so handle errors separately.
