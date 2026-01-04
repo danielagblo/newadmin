@@ -75,10 +75,10 @@ const SafeImage: React.FC<any> = ({ src, alt, className, style, fill, ...rest })
   if (!src) return null;
   const s = String(src || "");
   if (s.startsWith("data:") || s.startsWith("blob:")) {
-    return (
-      // eslint-disable-next-line jsx-a11y/alt-text
-      <img src={s} alt={alt} className={className} style={style} {...rest} />
-    );
+    // Use a raw <img> for data/blob URLs to avoid Next.js image optimizer errors
+    // eslint-disable-next-line jsx-a11y/alt-text
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={s} alt={alt} className={className} style={style} {...rest} />;
   }
   // For regular URLs use next/image (keeps existing behavior)
   return <Image src={s} alt={alt} className={className} style={style} {...(fill ? { fill: true } : {})} {...rest} />;
@@ -179,6 +179,7 @@ type ExtendedMessage = Omit<Message, "sender"> & {
   reply_to?: ExtendedMessage;
   temp_id?: string;
   __temp_id?: string;
+  __optimistic?: boolean;
 };
 
 export default function ChatRoomsPage() {
@@ -371,7 +372,7 @@ export default function ChatRoomsPage() {
 
       return () => clearTimeout(scrollTimer);
     }
-  }, [selectedRoom]);
+  }, [selectedRoom, scrollToBottom]);
 
   // Use a ref to store the latest messages for WebSocket comparison
   const messagesRef = useRef(messages);
@@ -503,10 +504,10 @@ export default function ChatRoomsPage() {
             }
 
             // Process incoming messages — replace if ID/temp_id match, add if new
-            const incomingToProcess = formattedMessages.map((m, idx) => ({ msg: m, raw: wsMessages[idx] }));
+            const incomingToProcess = formattedMessages.map((m, idx) => ({ msg: m, raw: wsMessages[idx] as any }));
             for (const item of incomingToProcess) {
               const incoming = { ...item.msg } as ExtendedMessage & { temp_id?: string };
-              incoming.temp_id = (item.raw && (item.raw.temp_id || item.raw.__temp_id)) || (incoming as any).temp_id;
+              incoming.temp_id = (item.raw && (((item.raw as any).temp_id) || ((item.raw as any).__temp_id))) || (incoming as any).temp_id;
 
               // Primary: match by server ID
               if (incoming.id && incoming.id > 0) {
@@ -534,18 +535,18 @@ export default function ChatRoomsPage() {
               // Tertiary: fuzzy match on content+sender+time (within 5s) for server echoes
               const incomingTime = incoming.created_at ? new Date(incoming.created_at).getTime() : 0;
               let found = false;
-              for (const [key, existing] of msgMap.entries()) {
-                if (!existing || !incoming) continue;
-                if (existing.sender?.id && incoming.sender?.id && existing.sender.id !== incoming.sender.id) continue;
-                if (existing.content !== incoming.content) continue;
+              msgMap.forEach((existing, key) => {
+                if (found) return;
+                if (!existing || !incoming) return;
+                if (existing.sender?.id && incoming.sender?.id && existing.sender.id !== incoming.sender.id) return;
+                if (existing.content !== incoming.content) return;
                 const existingTime = existing.created_at ? new Date(existing.created_at).getTime() : 0;
                 if (Math.abs(existingTime - incomingTime) <= 5000) {
                   // Always replace with server version (more authoritative)
                   msgMap.set(key, incoming);
                   found = true;
-                  break;
                 }
-              }
+              });
               if (found) continue;
 
               // No match found — add as genuinely new message
@@ -1237,6 +1238,8 @@ export default function ChatRoomsPage() {
           ],
         };
 
+        const roomKey = String(selectedRoom.room_id ?? selectedRoom.id ?? "");
+
         // Only add optimistic UI if room WS is connected; otherwise rely on server echo
         try {
           const isConnected = ws.isRoomConnected(roomKey);
@@ -1667,7 +1670,7 @@ export default function ChatRoomsPage() {
       console.error("[debug] error inspecting ws.messages", err);
     }
     // Intentionally only run when selectedRoom or messages count changes
-  }, [selectedRoom?.id, selectedRoom?.room_id, messages.length]);
+  }, [selectedRoom?.id, selectedRoom?.room_id, messages.length, ws]);
 
   return (
     <Layout>
@@ -2433,10 +2436,6 @@ export default function ChatRoomsPage() {
                             : handleStartRecording
                         }
                         className={`p-3 self-end ${isRecording
-                          ? "text-red-600 animate-pulse"
-                          : "text-gray-500 hover:text-gray-700"
-                          }`}
-                        className={`p-3 ${isRecording
                           ? "text-red-600 animate-pulse"
                           : "text-gray-500 hover:text-gray-700"
                           }`}
