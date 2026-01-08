@@ -233,13 +233,18 @@ export class WebSocketClient {
 
   private flushQueue() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      console.debug('WebSocketClient.flushQueue: readyState=', this.ws.readyState, 'queueLength=', this.sendQueue.length);
+    } catch {}
     while (this.sendQueue.length > 0) {
       const msg = this.sendQueue.shift();
       if (!msg) continue;
       try {
+        console.debug('WebSocketClient.flushQueue: sending queued message, remainingQueue=', this.sendQueue.length);
         this.ws.send(msg);
-      } catch {
+      } catch (err) {
         // if send fails, push it back and stop trying
+        console.warn('WebSocketClient.flushQueue: failed to send queued message, requeueing', err);
         this.sendQueue.unshift(msg);
         break;
       }
@@ -450,25 +455,39 @@ export class WebSocketClient {
   // NEW behavior: if not open yet, queue it (don’t throw)
   send(data: unknown) {
     const payload = typeof data === "string" ? data : JSON.stringify(data);
+    try {
+      const state = this.ws ? this.ws.readyState : 'NO_WS';
+      console.debug('WebSocketClient.send: readyState=', state, 'payload=', payload.slice ? payload.slice(0, 200) : payload, 'queueBefore=', this.sendQueue.length);
+    } catch {}
 
     if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
       // ensure we connect if someone tries to send early
+      console.debug('WebSocketClient.send: WS closed or missing, queueing payload and connecting');
       this.sendQueue.push(payload);
       this.connect();
       return;
     }
 
     if (this.ws.readyState === WebSocket.CONNECTING) {
+      console.debug('WebSocketClient.send: WS connecting, queueing payload');
       this.sendQueue.push(payload);
       return;
     }
 
     if (this.ws.readyState !== WebSocket.OPEN) {
+      console.debug('WebSocketClient.send: WS not open, queueing payload');
       this.sendQueue.push(payload);
       return;
     }
 
-    this.ws.send(payload);
+    try {
+      console.debug('WebSocketClient.send: sending immediately');
+      this.ws.send(payload);
+    } catch (err) {
+      console.warn('WebSocketClient.send: immediate send failed, queueing payload', err);
+      this.sendQueue.push(payload);
+      try { this.connect(); } catch {}
+    }
   }
 
   /**

@@ -239,8 +239,8 @@ export default function MessagesPage() {
                 {(
                   (localReplies as Record<number, Message[]>)[selected.id] || []
                 ).length === 0 && (
-                  <div className="text-sm text-gray-500">No replies yet</div>
-                )}
+                    <div className="text-sm text-gray-500">No replies yet</div>
+                  )}
               </div>
             </div>
 

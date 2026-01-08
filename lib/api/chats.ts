@@ -86,6 +86,23 @@ export const chatRoomsApi = {
     );
     return response.data;
   },
+  // Admin actions: close, soft-delete, reopen, restore
+  closeRoom: async (id: number): Promise<any> => {
+    const resp = await apiClient.post(`/chatrooms/${id}/close/`);
+    return resp.data;
+  },
+  softDeleteRoom: async (id: number): Promise<any> => {
+    const resp = await apiClient.post(`/chatrooms/${id}/delete/`);
+    return resp.data;
+  },
+  reopenRoom: async (id: number): Promise<any> => {
+    const resp = await apiClient.post(`/chatrooms/${id}/reopen/`);
+    return resp.data;
+  },
+  restoreRoom: async (id: number): Promise<any> => {
+    const resp = await apiClient.post(`/chatrooms/${id}/restore/`);
+    return resp.data;
+  },
 };
 
 export const messagesApi = {
