@@ -253,24 +253,24 @@ export default function useWsChat(): UseWsChatReturn {
     } as Message;
   };
 
-    // Normalize chatroom fields for UI display: prefer other user's name/avatar for 1:1 chats
-    const normalizeChatroomData = (r: any): ChatRoom => {
-      try {
-        const copy = { ...r } as ChatRoom;
-        const isGroup = !!(r as any).is_group;
-        if (!isGroup) {
-          const otherName =
-            (r as any).other_user_name ?? (r as any).other_user ?? null;
-          if (otherName) copy.name = String(otherName);
-        }
-        const otherAvatar =
-          (r as any).other_user_avatar ?? (r as any).other_avatar ?? null;
-        if (otherAvatar != null) copy.avatar = otherAvatar;
-        return copy;
-      } catch {
-        return r as ChatRoom;
+  // Normalize chatroom fields for UI display: prefer other user's name/avatar for 1:1 chats
+  const normalizeChatroomData = (r: any): ChatRoom => {
+    try {
+      const copy = { ...r } as ChatRoom;
+      const isGroup = !!(r as any).is_group;
+      if (!isGroup) {
+        const otherName =
+          (r as any).other_user_name ?? (r as any).other_user ?? null;
+        if (otherName) copy.name = String(otherName);
       }
-    };
+      const otherAvatar =
+        (r as any).other_user_avatar ?? (r as any).other_avatar ?? null;
+      if (otherAvatar != null) copy.avatar = otherAvatar;
+      return copy;
+    } catch {
+      return r as ChatRoom;
+    }
+  };
 
   const getClientForRoom = useCallback((roomId: string) => {
     const key = normalizeRoomId(roomId);
@@ -291,7 +291,7 @@ export default function useWsChat(): UseWsChatReturn {
     if (listClient.current) {
       try {
         listClient.current.close();
-      } catch {}
+      } catch { }
     }
 
     const wsBase = getWsBase();
@@ -332,7 +332,7 @@ export default function useWsChat(): UseWsChatReturn {
             setChatrooms(rooms);
             try {
               localStorage.setItem("oysloe_chatrooms", JSON.stringify(rooms));
-            } catch {}
+            } catch { }
             return;
           }
 
@@ -352,7 +352,7 @@ export default function useWsChat(): UseWsChatReturn {
               setChatrooms(rooms);
               try {
                 localStorage.setItem("oysloe_chatrooms", JSON.stringify(rooms));
-              } catch {}
+              } catch { }
               // bump update time so consumers notice
               setLastUpdateTime(Date.now());
             }
@@ -377,7 +377,7 @@ export default function useWsChat(): UseWsChatReturn {
               }
               try {
                 localStorage.setItem("oysloe_chatrooms", JSON.stringify(next));
-              } catch {}
+              } catch { }
               setLastUpdateTime(Date.now());
               return next;
             });
@@ -527,7 +527,7 @@ export default function useWsChat(): UseWsChatReturn {
             /* ignore */
           }
         }
-      } catch {}
+      } catch { }
 
       const wsBase = getWsBase();
       const encoded = encodeURIComponent(key);
@@ -588,7 +588,7 @@ export default function useWsChat(): UseWsChatReturn {
               }
             }
           },
-          onError: () => {},
+          onError: () => { },
           onMessage: (data) => {
             if (!data) return;
             // typing frames: { type: 'typing', user_id, typing: true/false }
@@ -630,7 +630,7 @@ export default function useWsChat(): UseWsChatReturn {
                   } catch {
                     // ignore
                   }
-                  try { setLastUpdateTime(Date.now()); } catch {}
+                  try { setLastUpdateTime(Date.now()); } catch { }
                   return next;
                 });
               }
@@ -658,7 +658,7 @@ export default function useWsChat(): UseWsChatReturn {
                   } catch {
                     // ignore
                   }
-                  try { setLastUpdateTime(Date.now()); } catch {}
+                  try { setLastUpdateTime(Date.now()); } catch { }
                   return next;
                 });
               }
@@ -673,16 +673,16 @@ export default function useWsChat(): UseWsChatReturn {
               // Normalize the incoming shape to our canonical Message
               const raw = data as any;
               // DEBUG: log raw incoming for diagnosis
-              try { console.debug("useWsChat incoming.raw:", raw); } catch {}
+              try { console.debug("useWsChat incoming.raw:", raw); } catch { }
               const incoming = normalizeIncomingMessage(raw) as Message & {
                 temp_id?: string;
               };
               // preserve server temp id echo if present
               if (raw?.temp_id) (incoming as any).temp_id = raw.temp_id;
-              try { console.debug("useWsChat incoming.norm:", incoming); } catch {}
+              try { console.debug("useWsChat incoming.norm:", incoming); } catch { }
               setMessages((prev) => {
                 const list = prev[key] || [];
-                try { console.debug("useWsChat existingList:", list.map((m: any) => ({ id: m.id, temp: (m as any).__temp_id || (m as any).temp_id, content: m.content }))); } catch {}
+                try { console.debug("useWsChat existingList:", list.map((m: any) => ({ id: m.id, temp: (m as any).__temp_id || (m as any).temp_id, content: m.content }))); } catch { }
 
                 // If server echoed our temp_id, replace the optimistic placeholder FIRST (highest priority)
                 const tempId = (incoming as any).temp_id;
@@ -692,12 +692,12 @@ export default function useWsChat(): UseWsChatReturn {
                       ((m as any).__temp_id || (m as any).temp_id) === tempId
                   );
                   if (byTemp !== -1) {
-                    try { console.debug("useWsChat: matched by temp_id", tempId); } catch {}
+                    try { console.debug("useWsChat: matched by temp_id", tempId); } catch { }
                     const newList = [...list];
                     // remove pending mapping for this temp id
-                    try { delete pendingByTempId.current[String(tempId)]; } catch {}
+                    try { delete pendingByTempId.current[String(tempId)]; } catch { }
                     newList[byTemp] = incoming; // Server version replaces optimistic
-                    try { setLastUpdateTime(Date.now()); } catch {}
+                    try { setLastUpdateTime(Date.now()); } catch { }
                     return { ...prev, [key]: newList };
                   }
                 }
@@ -725,16 +725,16 @@ export default function useWsChat(): UseWsChatReturn {
                   return Math.abs(mTime - incomingTime) <= 5000;
                 });
                 if (fuzzyIndex !== -1) {
-                  try { console.debug("useWsChat: matched by fuzzyIndex", fuzzyIndex); } catch {}
+                  try { console.debug("useWsChat: matched by fuzzyIndex", fuzzyIndex); } catch { }
                   // Replace the existing message with server version (more authoritative)
                   const existing = list[fuzzyIndex] as any;
                   try {
                     const et = existing && ((existing as any).__temp_id || (existing as any).temp_id);
                     if (et) delete pendingByTempId.current[String(et)];
-                  } catch {}
+                  } catch { }
                   const newList = [...list];
                   newList[fuzzyIndex] = incoming;
-                  try { setLastUpdateTime(Date.now()); } catch {}
+                  try { setLastUpdateTime(Date.now()); } catch { }
                   return { ...prev, [key]: newList };
                 }
 
@@ -747,7 +747,7 @@ export default function useWsChat(): UseWsChatReturn {
                     // Replace existing with server version
                     const updated = [...list];
                     updated[byId] = incoming;
-                    try { setLastUpdateTime(Date.now()); } catch {}
+                    try { setLastUpdateTime(Date.now()); } catch { }
                     return { ...prev, [key]: updated };
                   }
 
@@ -779,15 +779,15 @@ export default function useWsChat(): UseWsChatReturn {
                     return false;
                   });
                   if (optimisticIndex !== -1) {
-                    try { console.debug("useWsChat: replacing optimistic at index", optimisticIndex); } catch {}
+                    try { console.debug("useWsChat: replacing optimistic at index", optimisticIndex); } catch { }
                     const updated = [...list];
                     try {
                       const ex = updated[optimisticIndex] as any;
                       const et = ex && ((ex as any).__temp_id || (ex as any).temp_id);
                       if (et) delete pendingByTempId.current[String(et)];
-                    } catch {}
+                    } catch { }
                     updated[optimisticIndex] = incoming;
-                    try { setLastUpdateTime(Date.now()); } catch {}
+                    try { setLastUpdateTime(Date.now()); } catch { }
                     return { ...prev, [key]: updated };
                   }
 
@@ -802,7 +802,7 @@ export default function useWsChat(): UseWsChatReturn {
                   } catch {
                     // ignore
                   }
-                  try { setLastUpdateTime(Date.now()); } catch {}
+                  try { setLastUpdateTime(Date.now()); } catch { }
                   return newPrev;
                 }
 
@@ -820,7 +820,7 @@ export default function useWsChat(): UseWsChatReturn {
                 }
                 return newPrev;
               });
-              try { setLastUpdateTime(Date.now()); } catch {}
+              try { setLastUpdateTime(Date.now()); } catch { }
               // on new message, clear typing for sender (they sent so not typing now)
               try {
                 const sid = (incoming as any).sender?.id ?? null;
@@ -903,7 +903,7 @@ export default function useWsChat(): UseWsChatReturn {
     },
     [ensureRoomClient]
   );
-  
+
 
   const connectToUnreadCount = useCallback(() => {
     if (unreadClient.current?.isOpen()) return;
@@ -950,7 +950,7 @@ export default function useWsChat(): UseWsChatReturn {
 
       // Use existing room connection if available
       const existingClient = roomClients.current[key];
-      
+
       let messageToSend = text;
       let isMedia = false;
       let fileType = "";
@@ -997,7 +997,7 @@ export default function useWsChat(): UseWsChatReturn {
           console.log("sendMessage: existing client found, isOpen=", existingClient.isOpen());
           try {
             existingClient.connect();
-          } catch {}
+          } catch { }
 
           existingClient.send(payload);
           console.log("Message queued/sent via existing WebSocket connection");
@@ -1206,7 +1206,7 @@ export default function useWsChat(): UseWsChatReturn {
       }
       return next;
     });
-    try { setLastUpdateTime(Date.now()); } catch {}
+    try { setLastUpdateTime(Date.now()); } catch { }
   }, [normalizeRoomId]);
 
   const closeAll = useCallback(() => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { feedbackApi } from '@/lib/api/feedback';
 import clsx from 'clsx';
 import {
   Bell,
@@ -19,7 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface NavItem {
   name: string;
@@ -53,6 +54,27 @@ const navigation: NavItem[] = [
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
+  const [requestCount, setRequestCount] = useState(0);
+
+  useEffect(() => {
+    const fetchRequestCount = async () => {
+      try {
+        const feedbacks = await feedbackApi.list({ ordering: '-created_at' } as any);
+        if (Array.isArray(feedbacks)) {
+          const count = feedbacks.filter((fb: any) => fb.rating > 5).length;
+          setRequestCount(count);
+        }
+      } catch (error) {
+        console.error('Failed to fetch request count:', error);
+      }
+    };
+
+    fetchRequestCount();
+
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchRequestCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex flex-col w-64 bg-gray-900 text-white h-screen">
@@ -62,12 +84,14 @@ export const Sidebar: React.FC = () => {
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto no-scrollbar">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+          const showBadge = item.href === '/chatrooms' && requestCount > 0;
+
           return (
             <Link
               key={item.name}
               href={item.href}
               className={clsx(
-                'flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                'flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors relative',
                 isActive
                   ? 'bg-primary-600 text-white'
                   : 'text-gray-300 hover:bg-gray-800 hover:text-white'
@@ -75,6 +99,11 @@ export const Sidebar: React.FC = () => {
             >
               <item.icon className="mr-3 h-5 w-5" />
               {item.name}
+              {showBadge && (
+                <span className="ml-auto inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold rounded-full bg-yellow-500 text-white">
+                  {requestCount}
+                </span>
+              )}
             </Link>
           );
         })}

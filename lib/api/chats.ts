@@ -62,9 +62,9 @@ export const chatRoomsApi = {
     return response.data;
   },
 
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/chatrooms/${id}/`);
-  },
+  // delete: async (id: number): Promise<void> => {
+  //   await apiClient.delete(`/chatrooms/${id}/`);
+  // },
 
   getMessages: async (id: number): Promise<Message[]> => {
     const response = await apiClient.get<Message[]>(
@@ -91,9 +91,8 @@ export const chatRoomsApi = {
     const resp = await apiClient.post(`/chatrooms/${id}/close/`);
     return resp.data;
   },
-  softDeleteRoom: async (id: number): Promise<any> => {
-    const resp = await apiClient.post(`/chatrooms/${id}/delete/`);
-    return resp.data;
+  delete: async (id: number): Promise<void>  => {
+    await apiClient.post(`/chatrooms/${id}/delete/`);
   },
   reopenRoom: async (id: number): Promise<any> => {
     const resp = await apiClient.post(`/chatrooms/${id}/reopen/`);
