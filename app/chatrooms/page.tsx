@@ -1756,25 +1756,28 @@ export default function ChatRoomsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      if (
-                        window.confirm(
-                          `Are you sure you want to permanently delete "${selectedRoom.name}"? This action cannot be undone.`
-                        )
-                      ) {
-                        try {
-                          await chatRoomsApi.delete(selectedRoom.id);
-                          setChatRooms((prev) =>
-                            prev.filter((room) => room.id !== selectedRoom.id)
-                          );
-                          setSelectedRoom(null);
-                          setReplyingTo(null);
-                        } catch (error) {
-                          console.error("Error deleting chat room:", error);
-                          alert("Failed to delete chat room");
-                        }
-                      }
-                    }}
+                      disabled
+                      aria-disabled
+                      title="Delete is disabled"
+                    // onClick={async () => {
+                    //   if (
+                    //     window.confirm(
+                    //       `Are you sure you want to permanently delete "${selectedRoom.name}"? This action cannot be undone.`
+                    //     )
+                    //   ) {
+                    //     try {
+                    //       await chatRoomsApi.delete(selectedRoom.id);
+                    //       setChatRooms((prev) =>
+                    //         prev.filter((room) => room.id !== selectedRoom.id)
+                    //       );
+                    //       setSelectedRoom(null);
+                    //       setReplyingTo(null);
+                    //     } catch (error) {
+                    //       console.error("Error deleting chat room:", error);
+                    //       alert("Failed to delete chat room");
+                    //     }
+                    //   }
+                    // }}
                   >
                     Delete
                   </Button>
